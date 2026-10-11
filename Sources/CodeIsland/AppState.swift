@@ -6981,13 +6981,32 @@ final class AppState {
         let resourceSuffix = "/contents/resources/codex"
         guard lowerPath.hasSuffix(resourceSuffix) else { return false }
 
-        // Since Codex was folded into ChatGPT Desktop, the same com.openai.codex
-        // bundle can now be installed as ChatGPT.app instead of Codex.app. Read
-        // the bundle identifier first so future app renames continue to work.
         let appURL = executableURL
             .deletingLastPathComponent() // Resources
             .deletingLastPathComponent() // Contents
             .deletingLastPathComponent() // *.app
+        return isCodexHostAppBundle(appURL)
+    }
+
+    /// The Codex binary newer ChatGPT releases bundle in place of
+    /// `Contents/Resources/codex`. Desktop's app-server, ChatGPT's terminal
+    /// launcher (`codex-cli/bin/codex`) and its cloud `exec-server` all run
+    /// this one file, so the path says Codex, not Desktop.
+    nonisolated static func isBundledCodexCLIPath(_ path: String) -> Bool {
+        let executableURL = URL(fileURLWithPath: path).standardizedFileURL
+        let suffix = "/" + bundledCodexCLIRelativePath.lowercased()
+        guard executableURL.path.lowercased().hasSuffix(suffix) else { return false }
+        var appURL = executableURL
+        for _ in bundledCodexCLIRelativePath.split(separator: "/") {
+            appURL.deleteLastPathComponent()
+        }
+        return isCodexHostAppBundle(appURL)
+    }
+
+    private nonisolated static func isCodexHostAppBundle(_ appURL: URL) -> Bool {
+        // Since Codex was folded into ChatGPT Desktop, the same com.openai.codex
+        // bundle can now be installed as ChatGPT.app instead of Codex.app. Read
+        // the bundle identifier first so future app renames continue to work.
         if Bundle(url: appURL)?.bundleIdentifier == AppState.codexAppBundleId {
             return true
         }
@@ -7095,7 +7114,13 @@ final class AppState {
     }
 
     private nonisolated static func findCodexPids(candidatePids: [pid_t]? = nil) -> [pid_t] {
-        var codexPids: [pid_t] = []
+        findCodexProcesses(candidatePids: candidatePids).map(\.pid)
+    }
+
+    /// Running Codex processes discovery maps rollouts to, and whether each
+    /// is Codex Desktop's shared app-server.
+    nonisolated static func findCodexProcesses(candidatePids: [pid_t]? = nil) -> [(pid: pid_t, isDesktop: Bool)] {
+        var processes: [(pid: pid_t, isDesktop: Bool)] = []
 
         for pid in candidatePids ?? allProcessIds() {
             guard let path = executablePath(for: pid) else { continue }
@@ -7104,20 +7129,47 @@ final class AppState {
             // Match 1: Codex Desktop app (native binary). The executable may
             // live under Codex.app or ChatGPT.app depending on the release.
             if isCodexExecutablePath(path) {
-                codexPids.append(pid)
+                processes.append((pid, true))
                 continue
             }
 
-            // Match 2: npm/Homebrew install — node running @openai/codex script.
+            // Match 2: the binary newer ChatGPT releases bundle, shared by
+            // Desktop's app-server and Codex CLI; argv and parent tell them apart.
+            if isBundledCodexCLIPath(path) {
+                if let role = bundledCodexProcessRole(pid: pid, executablePath: path) {
+                    processes.append((pid, role == .desktopHost))
+                }
+                continue
+            }
+
+            // Match 3: npm/Homebrew install — node running @openai/codex script.
             // proc_pidpath returns the node binary, so check command-line args instead.
             if pathLower.hasSuffix("/node") {
                 if let args = getProcessArgs(pid),
                    args.contains(where: { $0.contains("@openai/codex") || $0.contains("openai-codex") }) {
-                    codexPids.append(pid)
+                    processes.append((pid, false))
                 }
             }
         }
-        return codexPids
+        return processes
+    }
+
+    private nonisolated static func bundledCodexProcessRole(pid: pid_t, executablePath path: String) -> CodexProcessRole? {
+        let parent = parentPid(of: pid)
+        // CodeIsland's own app-server client runs this binary too, from `/`;
+        // as a session process it would claim every CLI rollout.
+        if parent == getpid() { return nil }
+
+        var ancestry = [ProcessAncestor(pid: pid, executablePath: path, arguments: getProcessArgs(pid) ?? [])]
+        if let parent, let parentPath = executablePath(for: parent) {
+            ancestry.append(ProcessAncestor(
+                pid: parent,
+                executablePath: parentPath,
+                bundleIdentifier: HostHarnessResolver.outermostAppBundlePath(forExecutable: parentPath)
+                    .flatMap { Bundle(path: $0)?.bundleIdentifier }
+            ))
+        }
+        return CLIProcessResolver.codexBundledProcessRole(ancestry: ancestry)
     }
 
     /// Get command-line arguments for a process via sysctl KERN_PROCARGS2.
@@ -7350,15 +7402,15 @@ final class AppState {
 
     /// Find active Codex sessions by matching running processes to session files
     private nonisolated static func findActiveCodexSessions(candidatePids: [pid_t]? = nil) -> [DiscoveredSession] {
-        let codexPids = findCodexPids(candidatePids: candidatePids)
-        guard !codexPids.isEmpty else { return [] }
+        let codexProcesses = findCodexProcesses(candidatePids: candidatePids)
+        guard !codexProcesses.isEmpty else { return [] }
 
-        let processes = codexPids.map { pid in
+        let processes = codexProcesses.map { process in
             CodexProcessDiscoveryCandidate(
-                pid: pid,
-                cwd: getCwd(for: pid),
-                startTime: getProcessStartTime(pid),
-                isDesktop: executablePath(for: pid).map(isCodexExecutablePath) ?? false
+                pid: process.pid,
+                cwd: getCwd(for: process.pid),
+                startTime: getProcessStartTime(process.pid),
+                isDesktop: process.isDesktop
             )
         }
 

@@ -181,6 +181,34 @@ final class CLIProcessResolverTests: XCTestCase {
         XCTAssertNil(CLIProcessResolver.codexDesktopTermBundle(ancestry: [zsh, chatGPT]))
     }
 
+    // MARK: - codexBundledProcessRole
+
+    /// Discovery sees the bundled binary with its parent only. Desktop's
+    /// app-server hosts the Desktop threads; ChatGPT's cloud `exec-server`
+    /// (running from Resources) hosts none; the rest own their own rollouts.
+    func testBundledCodexProcessRoles() {
+        let pluginBroker = ProcessAncestor(
+            pid: 850,
+            executablePath: "/opt/homebrew/bin/node",
+            arguments: ["node", "app-server-broker.mjs", "serve"]
+        )
+        let execServer = ["codex", "-c", #"forced_login_method="chatgpt""#, "exec-server", "--remote", "https://example.invalid"]
+        let cases: [(String, [ProcessAncestor], CodexProcessRole?)] = [
+            ("Desktop app-server", [bundledCodex(desktopArguments), chatGPT], .desktopHost),
+            ("ChatGPT's exec-server", [bundledCodex(execServer), chatGPT], nil),
+            ("login", [bundledCodex(["codex", "login"]), zsh], nil),
+            ("terminal TUI", [bundledCodex(["codex"]), zsh], .session),
+            ("terminal TUI with a prompt", [bundledCodex(["codex", "fix the exec-server bug"]), zsh], .session),
+            ("codex exec", [bundledCodex(["codex", "exec", "summarise"]), zsh], .session),
+            ("Claude Code's Codex plugin", [bundledCodex(["codex", "app-server"]), pluginBroker], .session),
+            ("parent unreadable", [bundledCodex(desktopArguments)], .session),
+            ("nothing", [], nil),
+        ]
+        for (name, ancestry, expected) in cases {
+            XCTAssertEqual(CLIProcessResolver.codexBundledProcessRole(ancestry: ancestry), expected, name)
+        }
+    }
+
     // MARK: - inferSource (#220 / #95)
 
     /// #220: Claude Code launched inside Cursor's integrated terminal fires the

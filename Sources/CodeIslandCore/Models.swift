@@ -1,5 +1,13 @@
 import Foundation
 
+/// A running Codex process that session discovery maps rollouts to.
+public enum CodexProcessRole: Equatable, Sendable {
+    /// Codex Desktop's shared app-server: every Desktop thread, any cwd.
+    case desktopHost
+    /// A process that owns the rollouts started in its own cwd.
+    case session
+}
+
 public enum CLIProcessResolver {
     /// Lowercased bundle markers of the Trae CN desktop IDE (bundle id
     /// `cn.trae.app`). It has shipped as `Trae CN.app` since its first macOS
@@ -257,14 +265,48 @@ public enum CLIProcessResolver {
     /// an option value, not the subcommand. argv[0] must be `codex` too: an
     /// empty one is dropped by ProcArgsParser and shifts the rest left.
     static func isCodexAppServerInvocation(_ arguments: [String]) -> Bool {
+        codexSubcommand(arguments) == "app-server"
+    }
+
+    /// The first word after `codex [-c key=value]…`, or nil when argv[0] is
+    /// not `codex` or that word is an option. A bare prompt reads as one too,
+    /// so callers only compare it against known subcommand names.
+    static func codexSubcommand(_ arguments: [String]) -> String? {
         guard let program = arguments.first, (program as NSString).lastPathComponent == "codex" else {
-            return false
+            return nil
         }
         var index = 1
         while index < arguments.count, arguments[index] == "-c" || arguments[index] == "--config" {
             index += 2
         }
-        return index < arguments.count && arguments[index] == "app-server"
+        guard index < arguments.count, !arguments[index].hasPrefix("-") else { return nil }
+        return arguments[index]
+    }
+
+    /// Subcommands that never write a rollout. ChatGPT keeps `exec-server`
+    /// (cloud environments) running next to Desktop's app-server, from its
+    /// Resources directory.
+    static let codexNonSessionSubcommands: Set<String> = [
+        "exec-server", "login", "logout", "completion", "sandbox", "debug",
+        "apply", "cloud", "features", "mcp", "responses-api-proxy", "stdio-to-uds",
+    ]
+
+    /// What a process running ChatGPT's bundled Codex binary is to session
+    /// discovery, from its argv and its parent (`ancestry[0]` is the Codex
+    /// process). The same file runs Desktop's app-server, which hosts every
+    /// Desktop thread; ChatGPT's helpers, which host none and must not claim
+    /// rollouts by cwd; and everything else (a terminal TUI, `exec`, the
+    /// app-server Claude Code's Codex plugin starts), which owns its own.
+    public static func codexBundledProcessRole(ancestry: [ProcessAncestor]) -> CodexProcessRole? {
+        guard let process = ancestry.first else { return nil }
+        if codexDesktopTermBundle(ancestry: ancestry) != nil {
+            return .desktopHost
+        }
+        if let subcommand = codexSubcommand(process.arguments),
+           codexNonSessionSubcommands.contains(subcommand) {
+            return nil
+        }
+        return .session
     }
 
     /// Walk the process ancestry and return the first known CLI source whose binary
