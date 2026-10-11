@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [v1.0.38] - 2026-10-11
 
 ### English
 - **Codex Desktop threads show up again on current ChatGPT builds.** Newer ChatGPT releases moved Codex's binary from `ChatGPT.app/Contents/Resources/codex` to `Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`, and CodeIsland only knew the old place. Its process scan never found Desktop's app-server, so Desktop threads were never read from Codex's state database, and the live app-server connection could not start (it retried every 10 seconds while ChatGPT ran). Both now find the new binary. Because the same file also runs Codex CLI, discovery tells the two apart by what the process runs and who started it: the `app-server` ChatGPT starts is Desktop; ChatGPT's cloud `exec-server`, one-shot commands like `login`, and CodeIsland's own app-server connection are skipped; a terminal session or the app-server Claude Code's Codex plugin starts is a CLI session
