@@ -149,15 +149,20 @@ title, detail, questions and options are the agent's words, shown verbatim in wh
 **Glass (expanded)**
 - `ClearLensGlass` (`_variant` 11) inside `IslandSurface`. Thick, slightly frosted slab: `ThickGlassView` retunes
   the backdrop's private `glassBackground` filter on every layout and again on key-window / app-activation
-  changes (focusing a text field used to make the glass rebuild its filters and the blur jumped):
-  `inputBlurRadius` 3 (blur opacities 1), inner refraction height 86 / amount -110, outer refraction height 36 /
+  changes. Focus changes reach the glass as `_effectiveGlassMaterialContext` and its private
+  `_windowChangedKeyState`; the stock values (blur 0, thin refraction) come back a few frames later, so the
+  view skips `_windowChangedKeyState` and holds its values every frame for 0.5 s after a context change
+  (otherwise a click anywhere flashed clearer glass, then blur):
+  `inputBlurRadius` 3 (blur opacities 1), face color matrix on (`inputFaceOpacity` 1,
+  `inputFaceColorMatrixWhite` 0.55: the backdrop is capped at mid grey, like Voice Pill's glass, so white text
+  stays legible over a white window), inner refraction height 86 / amount -110, outer refraction height 36 /
   amount 22 (variant 11 ships blur 0, inner 20 / -50, outer 16 / 10). The white specular rim (layer `@3`) stays
   as the thin bright line along the bottom; thinned through its private `CASDFKeyFillHighlightEffect`:
   `keyHeight` / `fillHeight` 1.5 (default 3.5), `diffuseHeightScale` 4 (default 8).
 - Tint inside the glass, as fractions of the visible height (measured from the reference video, mapped past
   the hidden top inset): solid black over the top 47%, then
-  a soft fade (half linear, half smoothstep, 14 stops) ending at ~90%: black alpha 1 → 0. A milky white haze is
-  its own gradient from where the fade starts to the bottom edge, easing in (t^1.2) up to 0.3. Pure proportions at any
+  a soft fade (half linear, half smoothstep, 14 stops) ending at ~90%: black alpha 1 → 0, leaving the grey
+  glass at the bottom (no white haze). Pure proportions at any
   height (a short notify card fades like a tall one); mid-morph darkness comes from the black curtain below.
 - Text (not buttons or fields) gets a soft dark halo (`textHalo`: black 0.45, radius 2.5) for legibility.
 
@@ -192,7 +197,8 @@ title, detail, questions and options are the agent's words, shown verbatim in wh
     uses `checkmark.square.fill` / `square`). Hover: a white 0.12 continuous-corner tile (radius 12) behind the
     row, bleeding 10 pt past the text column, eased in over 0.12 s.
   - text fields (question "Other", action note): a frosted box, white 0.1 fill + white 0.18 hairline border,
-    radius 12, 38 pt tall, same 10 pt bleed.
+    radius 12, at least 38 pt tall, same 10 pt bleed. The field wraps (vertical axis, 1–4 lines) instead of
+    scrolling sideways, so typed text and IME marked text never run under the right edge.
   - action card: the SF Symbol for the action kind 18 pt next to the title; detail in a body block; the note
     field; the password warning as a row with `lock.fill`, systemOrange text.
 - Bottom toolbar, right-aligned like the compose sheet's "Save draft" / "Send": secondary then primary, both

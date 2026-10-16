@@ -57,18 +57,49 @@ final class ThickGlassView: NSGlassEffectView {
     static let refractionAmount = -110.0
     static let outerRefractionHeight = 36.0
     static let outerRefractionAmount = 22.0
+    /// Brightest the backdrop may show through (0...1): mid grey, like Voice Pill's glass.
+    static let faceWhite = 0.55
 
     /// 0...1, scales the refraction bands. They are fixed in points, so on a shrinking panel they would cover
     /// the whole slab and smear everything behind it; the morph fades them out with the glass.
     var strength: Double = 1
 
+
+    private func retune() {
+        if let layer { tune(layer) }
+    }
+
+    /// Private NSGlassEffectView hook called when the window gains or loses key. Its stock work rebuilds the
+    /// backdrop filters with the default values for the new state (blur 0, thin refraction when inactive), so
+    /// clicking the panel or anywhere else flashed a clearer glass and then our blur came back a moment later.
+    /// The island should look the same with or without focus: skip the rebuild and keep our values.
+    @objc func _windowChangedKeyState() {
+        retune()
+    }
     override func layout() {
         super.layout()
         retune()
     }
 
-    private func retune() {
-        if let layer { tune(layer) }
+    /// Focus changes reach the glass as a new `_effectiveGlassMaterialContext`; the stock filters are rebuilt
+    /// a few frames later, outside any hook we get. Hold our values over every frame until it has settled.
+    override func didChangeValue(forKey key: String) {
+        super.didChangeValue(forKey: key)
+        if key == "_effectiveGlassMaterialContext" { holdTuning() }
+    }
+
+    private var holdTimer: Timer?
+    private func holdTuning(for duration: TimeInterval = 0.5) {
+        retune()
+        holdTimer?.invalidate()
+        let end = Date().addingTimeInterval(duration)
+        holdTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 240, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self, Date() < end else { timer.invalidate(); return }
+                self.retune()
+            }
+        }
+        RunLoop.main.add(holdTimer!, forMode: .common)
     }
 
     /// A shape change (corner radius, size) rebuilds the backdrop filters after layout, on the way to the
@@ -130,6 +161,10 @@ final class ThickGlassView: NSGlassEffectView {
             let k = "filters.glassBackground."
             layer.setValue(Self.blurRadius, forKeyPath: k + "inputBlurRadius")
             for i in 0..<4 { layer.setValue(1.0, forKeyPath: k + "inputBlurOpacity\(i)") }
+            // Grey, not white: the backdrop's luminance is mapped into black...faceWhite, so a white window
+            // behind the panel reads as mid grey and white text on it stays legible.
+            layer.setValue(1.0, forKeyPath: k + "inputFaceOpacity")
+            layer.setValue(Self.faceWhite, forKeyPath: k + "inputFaceColorMatrixWhite")
             layer.setValue(Self.refractionHeight * strength, forKeyPath: k + "inputInnerRefractionHeight")
             layer.setValue(Self.refractionAmount * strength, forKeyPath: k + "inputInnerRefractionAmount")
             layer.setValue(Self.outerRefractionHeight * strength, forKeyPath: k + "inputOuterRefractionHeight")
@@ -140,8 +175,8 @@ final class ThickGlassView: NSGlassEffectView {
 }
 
 /// Lens glass (private variant 11, retuned by `ThickGlassView`) tinted from the top: solid black over the
-/// notch and the title row, then thinning out into a milky white haze, so the lower part reads as frosted
-/// white glass rather than a hole in the panel.
+/// notch and the title row, then thinning out into the glass, whose backdrop is capped at mid grey
+/// (`ThickGlassView.faceWhite`) so white text stays legible over a bright window.
 @available(macOS 26.0, *)
 struct ClearLensGlass: NSViewRepresentable {
     var cornerRadius: CGFloat
@@ -153,12 +188,11 @@ struct ClearLensGlass: NSViewRepresentable {
 
     final class TintView: NSView {
         let black = CAGradientLayer()
-        let milk = CAGradientLayer()
         override init(frame: NSRect) {
             super.init(frame: frame)
             wantsLayer = true
             layer = CALayer()
-            for g in [milk, black] {
+            for g in [black] {
                 g.startPoint = CGPoint(x: 0.5, y: 1)
                 g.endPoint = CGPoint(x: 0.5, y: 0)
                 layer?.addSublayer(g)
@@ -170,12 +204,9 @@ struct ClearLensGlass: NSViewRepresentable {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             black.frame = bounds
-            milk.frame = bounds
             CATransaction.commit()
         }
     }
-
-    static let milkMax = 0.3
 
     func makeNSView(context: Context) -> NSGlassEffectView {
         let glass = ThickGlassView()
@@ -204,7 +235,7 @@ struct ClearLensGlass: NSViewRepresentable {
         func at(_ y: Double) -> NSNumber { NSNumber(value: (Double(topInset) + y * Double(h)) / Double(total)) }
         // Proportions measured from the reference video: solid black over the top ~47% of the panel, then
         // a long, soft fade (half linear, half smoothstep) that is gone by ~90% of the height, leaving
-        // milky glass at the bottom. Pure proportions, whatever the height: a short notify card fades the
+        // grey glass at the bottom. Pure proportions, whatever the height: a short notify card fades the
         // same way as a tall question card (mid-morph darkness is the black curtain's job in IslandSurface).
         let f0 = 0.47
         let f1 = 0.9
@@ -221,21 +252,10 @@ struct ClearLensGlass: NSViewRepresentable {
         }
         blackStops.append(1)
         blackColors.append(NSColor.black.withAlphaComponent(1 - reveal).cgColor)
-        // The milky haze is its own gradient: it starts where the black starts fading and keeps building all
-        // the way to the bottom edge (ease-in), so the white is faint mid-panel and densest at the bottom.
-        var milkColors: [CGColor] = [NSColor.white.withAlphaComponent(0).cgColor]
-        var milkStops: [NSNumber] = [0]
-        for i in 0...steps {
-            let t = Double(i) / Double(steps)
-            milkStops.append(at(f0 + (1 - f0) * t))
-            milkColors.append(NSColor.white.withAlphaComponent(Self.milkMax * pow(t, 1.2) * reveal).cgColor)
-        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         tint.black.colors = blackColors
         tint.black.locations = blackStops
-        tint.milk.colors = milkColors
-        tint.milk.locations = milkStops
         CATransaction.commit()
         tint.needsLayout = true
         glass.needsLayout = true

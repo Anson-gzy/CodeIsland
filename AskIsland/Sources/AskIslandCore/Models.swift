@@ -50,7 +50,7 @@ public struct AskQuestion: Codable, Hashable, Sendable {
     public var question: String
     public var options: [AskOption]
     public var multiSelect: Bool
-    /// Show a free-text field ("其他"). With no options this is the only input.
+    /// Show a free-text field ("Other"). With no options this is the only input.
     public var allowText: Bool
     public init(header: String? = nil, question: String, options: [AskOption] = [],
                 multiSelect: Bool = false, allowText: Bool = true) {
@@ -99,7 +99,7 @@ public struct AskRequest: Codable, Identifiable, Hashable, Sendable {
     /// Clients may leave it empty; the server assigns a UUID string.
     public var id: String
     public var kind: AskKind
-    /// One line: what is needed ("选一个部署目标", "在 iPhone 上点允许").
+    /// One line: what is needed ("Pick a deploy target", "Tap Allow on the iPhone").
     public var title: String
     /// What exactly the person has to do, plain text with line breaks / "1. 2." steps.
     public var detail: String?
@@ -169,9 +169,9 @@ public struct AskRequest: Codable, Identifiable, Hashable, Sendable {
 public enum AskStatus: String, Codable, Sendable {
     /// `.question` submitted.
     case answered
-    /// `.action` ticked "我已完成".
+    /// `.action` ticked "Done".
     case done
-    /// Person pressed "做不了 / 拒绝"; `note` may say why.
+    /// Person pressed "Can't do it / Decline"; `note` may say why.
     case declined
     /// `timeoutSeconds` elapsed.
     case timeout
@@ -217,7 +217,7 @@ public struct AskResponse: Codable, Hashable, Sendable {
     public var status: AskStatus
     /// One per question, same order as `AskRequest.questions`. Empty unless `.answered`.
     public var answers: [AskAnswer]
-    /// Free note for actions ("已登录，但验证码没收到").
+    /// Free note for actions ("Signed in, but the code never arrived").
     public var note: String?
     public init(id: String, status: AskStatus, answers: [AskAnswer] = [], note: String? = nil) {
         self.id = id; self.status = status; self.answers = answers; self.note = note

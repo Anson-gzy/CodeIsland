@@ -412,11 +412,11 @@ final class CoreTests: XCTestCase {
         {
           "hook_event_name": "PermissionRequest",
           "tool_name": "AskUserQuestion",
-          "tool_input": {"questions": [{"question": "部署到哪个环境？", "options": [{"label": "预发"}, {"label": "生产"}]}]}
+          "tool_input": {"questions": [{"question": "Which environment should this deploy to?", "options": [{"label": "Staging"}, {"label": "Production"}]}]}
         }
         """
         let parsed = try XCTUnwrap(ClaudeHook.parseRequest(from: inputJSON))
-        XCTAssertEqual(parsed.request.title, "部署到哪个环境？")
+        XCTAssertEqual(parsed.request.title, "Which environment should this deploy to?")
     }
 
     func testClaudeHookAskUserQuestionTwoQuestionsKeepsQuestionsAndKeysAnswers() throws {
@@ -555,7 +555,7 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(parsed.request.detail, "rm -rf /tmp/build")
         XCTAssertEqual(parsed.request.questions.first?.options.map(\.label), ["Allow", "Deny"])
 
-        // 允许 -> allow
+        // Allow -> allow
         let allowResponse = AskResponse(
             id: parsed.request.id,
             status: .answered,
@@ -570,7 +570,7 @@ final class CoreTests: XCTestCase {
         }
         XCTAssertEqual(decisionAllow["behavior"] as? String, "allow")
 
-        // 拒绝 -> deny
+        // Deny -> deny
         let denyResponse = AskResponse(
             id: parsed.request.id,
             status: .answered,

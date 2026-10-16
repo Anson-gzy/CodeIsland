@@ -433,12 +433,17 @@ struct CardTextField: View {
     @Binding var text: String
 
     var body: some View {
-        TextField("", text: $text, prompt: Text(placeholder).foregroundColor(.white.opacity(0.4)))
+        // Wraps instead of scrolling sideways: a single-line field scrolls its text under the right edge,
+        // and IME marked text (pinyin) past the edge is not scrolled into view at all. Grows up to 4 lines.
+        TextField("", text: $text, prompt: Text(placeholder).foregroundColor(.white.opacity(0.4)), axis: .vertical)
             .textFieldStyle(.plain)
+            .lineLimit(1...4)
             .font(.system(size: 14))
             .foregroundColor(.white)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, CardMetrics.rowInset)
-            .frame(height: 38)
+            .padding(.vertical, 10)
+            .frame(minHeight: 38)
             .background(
                 RoundedRectangle(cornerRadius: CardMetrics.rowRadius, style: .continuous)
                     .fill(Color.white.opacity(0.1))

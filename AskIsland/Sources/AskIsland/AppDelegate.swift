@@ -124,8 +124,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             let q1 = AskQuestion(
                 header: "Single",
-                question: "部署到哪个环境？",
-                options: [AskOption(label: "预发环境", description: "先在 staging 上验一遍"), AskOption(label: "生产环境")],
+                question: "Which environment should this deploy to?",
+                options: [AskOption(label: "Staging", description: "Check it on staging first"), AskOption(label: "Production")],
                 multiSelect: false,
                 allowText: false
             )
@@ -142,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             let req1 = AskRequest(
                 kind: .question,
-                title: "确认部署配置",
+                title: "Confirm the deploy settings",
                 detail: "Model-written text keeps the model's language; only buttons and hints are English.",
                 questions: [q1, q2],
                 source: AskSource(agent: "claude", cwd: "/tmp/demo/my-project")
