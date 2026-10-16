@@ -128,16 +128,35 @@ struct ClearLensGlass: NSViewRepresentable {
         glass.cornerRadius = cornerRadius
         guard let tint = glass.contentView as? TintView else { return }
         let h = max(height, 1)
-        // Locations in points, converted to fractions of the current height so the black band keeps its
-        // size while the capsule grows; a small capsule (collapsed pill) is black all the way down.
-        func at(_ y: CGFloat) -> NSNumber { NSNumber(value: Double(min(max(y / h, 0), 1))) }
-        let s = solidHeight
+        // Proportions measured from the reference video: solid black over the top ~47% of the panel, then
+        // a long, soft fade (half linear, half smoothstep) that is gone by ~90% of the height, leaving
+        // milky glass at the bottom. A short capsule (the collapsed pill) stays black down to `solidHeight`.
+        let f0 = max(0.47, min(solidHeight / h, 1))
+        let f1 = f0 + 0.43 * (1 - f0) / 0.53
+        // While the capsule is still small (pill, or mid-morph) it stays dark like the reference; the clear,
+        // milky lower part only opens up as it grows toward panel size.
+        let reveal = min(max((h - 180) / 220, 0), 1)
+        let steps = 14
+        var blackColors: [CGColor] = [NSColor.black.cgColor]
+        var blackStops: [NSNumber] = [0]
+        var milkColors: [CGColor] = [NSColor.white.withAlphaComponent(0).cgColor]
+        for i in 0...steps {
+            let t = Double(i) / Double(steps)
+            let eased = 0.5 * t + 0.5 * t * t * (3 - 2 * t)
+            let y = f0 + (f1 - f0) * t
+            blackStops.append(NSNumber(value: y))
+            blackColors.append(NSColor.black.withAlphaComponent(1 - 0.94 * eased * reveal).cgColor)
+            milkColors.append(NSColor.white.withAlphaComponent(0.24 * eased * reveal).cgColor)
+        }
+        blackStops.append(1)
+        blackColors.append(NSColor.black.withAlphaComponent(1 - 0.94 * reveal).cgColor)
+        milkColors.append(NSColor.white.withAlphaComponent(0.24 * reveal).cgColor)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        tint.black.colors = [1.0, 1.0, 0.72, 0.4, 0.22, 0.16].map { NSColor.black.withAlphaComponent($0).cgColor }
-        tint.black.locations = [at(0), at(s), at(s + 36), at(s + 90), at(s + 170), at(h)]
-        tint.milk.colors = [0.0, 0.0, 0.17, 0.28].map { NSColor.white.withAlphaComponent($0).cgColor }
-        tint.milk.locations = [at(0), at(s), at(s + 120), at(h)]
+        tint.black.colors = blackColors
+        tint.black.locations = blackStops
+        tint.milk.colors = milkColors
+        tint.milk.locations = blackStops
         CATransaction.commit()
         tint.needsLayout = true
         glass.needsLayout = true

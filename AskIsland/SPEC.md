@@ -151,10 +151,11 @@ look), styled like a macOS 26 compose sheet. All UI text is English.
   every layout: `inputBlurRadius` 5 (blur opacities 1), `inputInnerRefractionHeight` 48,
   `inputInnerRefractionAmount` -75 (variant 11 ships 0 / 20 / -50). The white specular rim (layer `@3`) stays
   on: it is what makes the edge read as thick glass, as in the "Search or Ask" reference.
-- Tint inside the glass, positions in points from the top (`s` = notch height + 40, the title row): black
-  alpha 1 down to `s`, then 0.72 at `s+36`, 0.4 at `s+90`, 0.22 at `s+170`, 0.16 at the bottom; under it a
-  milky white haze, 0 down to `s`, 0.17 at `s+120`, 0.28 at the bottom. The lower part is never plain clear:
-  it reads as slightly white glass. Text keeps its tight dark shadow.
+- Tint inside the glass, as fractions of the capsule height (measured from the reference video): solid black
+  over the top 47% (or down to notch height + 40, whichever is lower), then a soft fade (half linear, half
+  smoothstep, 14 stops) ending at ~90%: black alpha 1 → 0.06, while a milky white haze rises 0 → 0.24. The
+  fade only opens up as the capsule grows (`reveal` = (height − 180) / 220, clamped), so the pill and the
+  mid-morph frames stay dark like the reference. Text keeps its tight dark shadow.
 - The same capsule is the collapsed pill (notch width + 90 by notch height + 26): at that size it is black
   all the way down.
 
