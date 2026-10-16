@@ -47,7 +47,7 @@ extension AnyTransition {
 
 /// Variant-11 glass retuned to read as a thick, slightly frosted slab: the backdrop's private
 /// `glassBackground` filter gets a light blur and deeper refraction bands, and the white specular rim
-/// (layer "@3") is kept on the top and sides but masked out along the bottom. Values are re-applied on every layout because the glass rebuilds its layers
+/// (layer "@3") is thinned. Values are re-applied on every layout because the glass rebuilds its layers
 /// and filters when its shape changes (macOS 27.2).
 @available(macOS 26.0, *)
 final class ThickGlassView: NSGlassEffectView {
@@ -76,32 +76,9 @@ final class ThickGlassView: NSGlassEffectView {
         rim.setValue(effect, forKey: "effect")
     }
 
-    /// Keeps the white specular rim (layer "@3") on the top and sides but fades it out before the bottom
-    /// corners, so the bottom edge has refraction without a bright line.
-    private func maskBottom(ofRim rim: CALayer) {
-        let h = max(rim.bounds.height, 1)
-        let r = min(cornerRadius, h / 2)
-        let mask = (rim.mask as? CAGradientLayer) ?? CAGradientLayer()
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        mask.frame = rim.bounds
-        mask.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor, NSColor.clear.cgColor]
-        let fadeStart = max(0, (h - r * 1.1) / h)
-        let fadeEnd = max(fadeStart, (h - r * 0.45) / h)
-        mask.locations = [0, NSNumber(value: fadeStart), NSNumber(value: fadeEnd), 1]
-        // The glass's layer tree is top-down (y = 0 at the top edge) on macOS 27.2: measured, not inferred
-        // from isGeometryFlipped, which reports false here.
-        mask.startPoint = CGPoint(x: 0.5, y: 0)
-        mask.endPoint = CGPoint(x: 0.5, y: 1)
-        rim.mask = mask
-        rim.isHidden = false
-        CATransaction.commit()
-    }
-
     private func tune(_ layer: CALayer) {
         if layer.name == "@3" {
-            thinRim(layer)
-            maskBottom(ofRim: layer)
+            thinRim(layer)  // the thin white highlight along the bottom edge, as in the reference
         }
         if String(describing: type(of: layer)) == "CABackdropLayer",
            layer.filters?.contains(where: { ($0 as AnyObject).value(forKey: "name") as? String == "glassBackground" }) == true {
@@ -151,7 +128,7 @@ struct ClearLensGlass: NSViewRepresentable {
         }
     }
 
-    static let milkMax = 0.16
+    static let milkMax = 0.42
 
     func makeNSView(context: Context) -> NSGlassEffectView {
         let glass = ThickGlassView()
@@ -190,10 +167,10 @@ struct ClearLensGlass: NSViewRepresentable {
             let eased = 0.5 * t + 0.5 * t * t * (3 - 2 * t)
             let y = f0 + (f1 - f0) * t
             blackStops.append(NSNumber(value: y))
-            blackColors.append(NSColor.black.withAlphaComponent(1 - 0.94 * eased * reveal).cgColor)
+            blackColors.append(NSColor.black.withAlphaComponent(1 - eased * reveal).cgColor)
         }
         blackStops.append(1)
-        blackColors.append(NSColor.black.withAlphaComponent(1 - 0.94 * reveal).cgColor)
+        blackColors.append(NSColor.black.withAlphaComponent(1 - reveal).cgColor)
         // The milky haze is its own gradient: it starts where the black starts fading and keeps building all
         // the way to the bottom edge (ease-in), so the white is faint mid-panel and densest at the bottom.
         var milkColors: [CGColor] = [NSColor.white.withAlphaComponent(0).cgColor]
@@ -201,7 +178,7 @@ struct ClearLensGlass: NSViewRepresentable {
         for i in 0...steps {
             let t = Double(i) / Double(steps)
             milkStops.append(NSNumber(value: f0 + (1 - f0) * t))
-            milkColors.append(NSColor.white.withAlphaComponent(Self.milkMax * pow(t, 1.6) * reveal).cgColor)
+            milkColors.append(NSColor.white.withAlphaComponent(Self.milkMax * pow(t, 1.2) * reveal).cgColor)
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
