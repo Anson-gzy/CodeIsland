@@ -86,13 +86,6 @@ private class IslandHostingView<Content: View>: NSHostingView<Content> {
         super.needsLayout = value
         applyingDeferred = false
     }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        if IslandWindowController.shared?.isPendingEmpty == true {
-            return nil
-        }
-        return super.hitTest(point)
-    }
 }
 
 @MainActor
@@ -107,14 +100,8 @@ final class IslandWindowController: ObservableObject {
     private var knownRequestIds = Set<String>()
     private var previousApp: NSRunningApplication?
 
-    @Published var isCollapsed: Bool = false {
-        didSet {
-            updateWindowFrame()
-        }
-    }
+    @Published var isCollapsed: Bool = false
     @Published var pulseTrigger: Int = 0
-
-    private var currentHeight: CGFloat = 0
 
     var isPendingEmpty: Bool {
         store.pending.isEmpty
@@ -162,21 +149,23 @@ final class IslandWindowController: ObservableObject {
             controller: self,
             onFocusTextField: { [weak self] in
                 self?.makeKeyAndActivateApp()
-            },
-            onHeightChanged: { [weak self] height in
-                guard let self = self else { return }
-                self.currentHeight = height
-                self.updateWindowFrame(newHeight: height)
             }
         )
 
         let hostingView = IslandHostingView(rootView: rootView)
-        // The controller owns the window frame (centered under the notch); a hosting view that
-        // resizes the window to its content keeps the old origin and drifts the island sideways.
+        // Fixed window frame; hostingView does not resize the window
         hostingView.sizingOptions = []
 
+        let screen = ScreenDetector.preferredScreen
+        let screenFrame = screen.frame
+        let width: CGFloat = 520
+        let height: CGFloat = screenFrame.height * 0.7
+        let x = screenFrame.midX - width / 2
+        let y = screenFrame.maxY - height
+        let fixedFrame = NSRect(x: x, y: y, width: width, height: height)
+
         let panel = KeyablePanel(
-            contentRect: NSRect(origin: .zero, size: NSSize(width: 480, height: 100)),
+            contentRect: fixedFrame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -194,8 +183,10 @@ final class IslandWindowController: ObservableObject {
         panel.sharingType = .readOnly
         panel.ignoresMouseEvents = true
         panel.contentView = hostingView
+        panel.setFrame(fixedFrame, display: true)
 
         self.panel = panel
+        panel.orderFrontRegardless()
 
         store.$pending
             .receive(on: DispatchQueue.main)
@@ -203,8 +194,6 @@ final class IslandWindowController: ObservableObject {
                 self?.handlePendingChange(pending)
             }
             .store(in: &cancellables)
-
-        updateWindowFrame()
     }
 
     func makeKeyAndActivateApp() {
@@ -226,7 +215,9 @@ final class IslandWindowController: ObservableObject {
 
             if knownRequestIds.isEmpty {
                 // Expanding for the first arrival
-                isCollapsed = false
+                withAnimation(NotchAnimation.open) {
+                    isCollapsed = false
+                }
                 panel?.ignoresMouseEvents = false
                 panel?.orderFrontRegardless()
             } else if isCollapsed {
@@ -238,46 +229,29 @@ final class IslandWindowController: ObservableObject {
         knownRequestIds = currentIds
 
         if pending.isEmpty {
-            // Nothing pending: ignore mouse events
-            panel?.ignoresMouseEvents = true
-
             // Reactivate previously frontmost app
             if let app = previousApp, !app.isTerminated {
                 app.activate()
             }
             previousApp = nil
+
+            // Resolving the last request animates expanded to hidden and only then sets ignoresMouseEvents true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                guard let self = self, self.isPendingEmpty else { return }
+                self.panel?.ignoresMouseEvents = true
+            }
         } else {
             panel?.ignoresMouseEvents = false
             panel?.orderFrontRegardless()
         }
-
-        updateWindowFrame()
     }
 
-    func updateWindowFrame(newHeight: CGFloat? = nil) {
+    func updateWindowFrame() {
         guard let panel = panel else { return }
         let screen = ScreenDetector.preferredScreen
         let screenFrame = screen.frame
-
-        if store.pending.isEmpty {
-            panel.setFrame(NSRect(x: screenFrame.midX, y: screenFrame.maxY, width: 0, height: 0), display: true)
-            return
-        }
-
-        let width: CGFloat
-        let height: CGFloat
-
-        if isCollapsed {
-            width = ScreenDetector.notchWidth(for: screen) + 24
-            height = ScreenDetector.topBarHeight(for: screen) + CollapsedIslandView.stripHeight
-        } else {
-            width = 480
-            let h = newHeight ?? currentHeight
-            let maxHeight = screenFrame.height * 0.7
-            let initialH = h > 0 ? h : 240
-            height = min(max(initialH, ScreenDetector.topBarHeight(for: screen) + 60), maxHeight)
-        }
-
+        let width: CGFloat = 520
+        let height: CGFloat = screenFrame.height * 0.7
         let x = screenFrame.midX - width / 2
         let y = screenFrame.maxY - height
         panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
@@ -288,7 +262,7 @@ final class IslandWindowController: ObservableObject {
 
         // Esc: collapse
         if event.keyCode == 53 {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            withAnimation(NotchAnimation.close) {
                 isCollapsed = true
             }
             return true
