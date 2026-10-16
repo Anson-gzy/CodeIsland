@@ -81,11 +81,28 @@ struct NotchPanelShape: Shape {
         p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + ext))
         p.addCurve(
             to: CGPoint(x: rect.minX - ext, y: rect.minY),
-            control1: CGPoint(x: rect.minX - ext, y: rect.minY + ext * 0.35),
+            control1: CGPoint(x: rect.minX, y: rect.minY + ext * 0.35),
             control2: CGPoint(x: rect.minX - ext * 0.35, y: rect.minY)
         )
         p.closeSubpath()
         return p
+    }
+}
+
+/// Glass whose white specular rim is switched off: the reference has refraction at the edge but no
+/// bright line. Layer "@3" of NSGlassEffectView draws that rim (macOS 27.2); "@1" carries the content and
+/// must stay. Re-applied on every layout because the glass rebuilds its layers when its shape changes.
+@available(macOS 26.0, *)
+final class RimlessGlassView: NSGlassEffectView {
+    override func layout() {
+        super.layout()
+        hideRim(in: layer)
+    }
+
+    private func hideRim(in layer: CALayer?) {
+        guard let layer else { return }
+        if layer.name == "@3" { layer.isHidden = true }
+        layer.sublayers?.forEach { hideRim(in: $0) }
     }
 }
 
@@ -94,7 +111,7 @@ struct ClearLensGlass: NSViewRepresentable {
     var cornerRadius: CGFloat
 
     func makeNSView(context: Context) -> NSGlassEffectView {
-        let glass = NSGlassEffectView()
+        let glass = RimlessGlassView()
         glass.style = .clear
         if glass.responds(to: Selector(("set_variant:"))) {
             glass.setValue(11, forKey: "_variant")
@@ -102,8 +119,8 @@ struct ClearLensGlass: NSViewRepresentable {
         let tint = NSView()
         tint.wantsLayer = true
         let gradient = CAGradientLayer()
-        gradient.colors = [1.0, 1.0, 0.75, 0.5, 0.4, 0.35].map { NSColor.black.withAlphaComponent($0).cgColor }
-        gradient.locations = [0, 0.2, 0.35, 0.55, 0.8, 1].map { NSNumber(value: Double($0)) }
+        gradient.colors = [1.0, 1.0, 0.9, 0.78, 0.7, 0.66].map { NSColor.black.withAlphaComponent($0).cgColor }
+        gradient.locations = [0, 0.22, 0.38, 0.58, 0.82, 1].map { NSNumber(value: Double($0)) }
         gradient.startPoint = CGPoint(x: 0.5, y: 1)
         gradient.endPoint = CGPoint(x: 0.5, y: 0)
         tint.layer = gradient
@@ -116,6 +133,7 @@ struct ClearLensGlass: NSViewRepresentable {
     func updateNSView(_ glass: NSGlassEffectView, context: Context) {
         glass.cornerRadius = cornerRadius
         glass.contentView?.layer?.frame = glass.bounds
+        glass.needsLayout = true
     }
 }
 
@@ -124,27 +142,33 @@ struct IslandBackground: View {
     let expanded: Bool
     let notchHeight: CGFloat
 
+    static let glassRadius: CGFloat = 56
+
     var body: some View {
         if #available(macOS 26.0, *), expanded {
-            ClearLensGlass(cornerRadius: 56)
-                .padding(.top, -56 * 2)
-                .overlay(
-                    shape.fill(.black)
-                        .mask(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .black, location: 0),
-                                    .init(color: .black, location: 0.5),
-                                    .init(color: .clear, location: 1),
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            .frame(height: notchHeight * 2)
-                            .frame(maxHeight: .infinity, alignment: .top)
+            ZStack(alignment: .top) {
+                // Top edge pushed above the window so only the bottom corners round.
+                ClearLensGlass(cornerRadius: Self.glassRadius)
+                    .padding(.top, -Self.glassRadius * 2)
+                // Solid black band that joins the notch; drawn in the panel's own frame so the shape's
+                // concave shoulders flare out at the screen's top edge.
+                shape.fill(.black)
+                    .mask(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .black, location: 0),
+                                .init(color: .black, location: 0.55),
+                                .init(color: .clear, location: 1),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
                         )
-                )
-                .transition(.opacity)
+                        .frame(height: notchHeight * 2.4)
+                        .padding(.horizontal, -shape.topExtension)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                    )
+            }
+            .transition(.opacity)
         } else {
             shape.fill(.black)
         }
@@ -232,15 +256,15 @@ struct IslandRootView: View {
             // Animated with scaleEffect anchored at top from notch width/height ratios to 1
             IslandBackground(
                 shape: NotchPanelShape(
-                    topExtension: 14,
-                    bottomRadius: 24,
+                    topExtension: 30,
+                    bottomRadius: IslandBackground.glassRadius,
                     minHeight: notchHeight
                 ),
                 expanded: true,
                 notchHeight: notchHeight
             )
+            // Not clipped: the black band's shoulders reach past the panel's sides at the screen edge.
             .frame(width: 480, height: expandedHeight, alignment: .top)
-            .clipped()
             .scaleEffect(x: glassScaleX, y: glassScaleY, anchor: .top)
             .opacity(isExpanded ? 1.0 : 0.0)
             .allowsHitTesting(isExpanded)

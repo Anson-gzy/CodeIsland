@@ -119,7 +119,7 @@ then a phone action, then a notify, so screenshots show every card.
 ## Expand / collapse animation (like upstream CodeIsland)
 
 The island grows out of the notch and shrinks back into it; the window never resizes to animate.
-- The panel window has a fixed frame: centered under the notch, width 520, height 70% of the screen, top
+- The panel window has a fixed frame: centered under the notch, width 560, height 70% of the screen, top
   edge at the screen top. Fully transparent pixels of the non-opaque borderless panel let clicks through (that
   is how upstream does it; no hit-test override needed). `ignoresMouseEvents` stays true while nothing is
   pending.
@@ -147,8 +147,12 @@ compose sheet. All UI text is English.
 - `ClearLensGlass` (`_variant` 11) with corner radius 56 for the bottom corners: on this glass the refracting
   rim is as wide as the corner radius, so a large radius is what gives the thick lensing border on the left,
   right and bottom edges. The top stays pushed above the window so only the bottom corners round.
+- No white specular rim: the reference refracts at the edge but has no bright line. `RimlessGlassView`
+  hides the glass's layer named `@3` (the rim highlight on macOS 27.2) on every layout.
+- The solid black band at the top joins the notch and flares out into concave shoulders (`topExtension` 30)
+  at the screen's top edge, so the window is 560 wide for a 480 island.
 - Tint inside the glass, top to bottom: solid black through the notch band, then fading to a dim smoke that
-  never goes fully clear: black alpha `[1, 1, 0.75, 0.5, 0.4, 0.35]` at `[0, 0.2, 0.35, 0.55, 0.8, 1]`. Text
+  never goes fully clear (the reference is mostly dark glass): black alpha `[1, 1, 0.9, 0.78, 0.7, 0.66]` at `[0, 0.22, 0.38, 0.58, 0.82, 1]`. Text
   sits on the smoke; keep the tight dark text shadow.
 - Content is inset 28 pt from the left/right edges and 24 pt from the bottom so nothing sits on the rim.
 
