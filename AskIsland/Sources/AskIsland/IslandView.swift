@@ -46,8 +46,8 @@ extension AnyTransition {
 // MARK: - Glass
 
 /// Variant-11 glass retuned to read as a thick, slightly frosted slab: the backdrop's private
-/// `glassBackground` filter gets a light blur and a deeper inner refraction band, and the white specular
-/// rim (layer "@3") stays on. Values are re-applied on every layout because the glass rebuilds its layers
+/// `glassBackground` filter gets a light blur and deeper refraction bands, and the white specular rim
+/// (layer "@3") is hidden. Values are re-applied on every layout because the glass rebuilds its layers
 /// and filters when its shape changes (macOS 27.2).
 @available(macOS 26.0, *)
 final class ThickGlassView: NSGlassEffectView {
@@ -63,6 +63,7 @@ final class ThickGlassView: NSGlassEffectView {
     }
 
     private func tune(_ layer: CALayer) {
+        if layer.name == "@3" { layer.isHidden = true }  // the white specular rim along the bottom edge
         if String(describing: type(of: layer)) == "CABackdropLayer",
            layer.filters?.contains(where: { ($0 as AnyObject).value(forKey: "name") as? String == "glassBackground" }) == true {
             let k = "filters.glassBackground."
