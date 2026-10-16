@@ -56,7 +56,7 @@ OURS = {
     "PermissionRequest": {"matcher": "", "hooks": [{"type": "command", "command": "${HOME}/.local/bin/ask-island hook", "timeout": 86400}]},
     "Notification": {"matcher": "", "hooks": [{"type": "command", "command": "${HOME}/.local/bin/ask-island hook", "timeout": 10}]},
 }
-def patch(path, home, drop_codeisland):
+def patch(path, home, drop_codeisland, backup):
     with open(path) as f: d = json.load(f)
     hooks = d.setdefault("hooks", {})
     for ev in list(hooks):
@@ -71,11 +71,11 @@ def patch(path, home, drop_codeisland):
     for ev, entry in OURS.items():
         e = json.loads(json.dumps(entry).replace("${HOME}", home))
         hooks.setdefault(ev, []).append(e)
-    shutil.copy(path, path + ".askisland.bak")
+    if backup: shutil.copy(path, path + ".askisland.bak")
     with open(path, "w") as f: json.dump(d, f, ensure_ascii=False, indent=2); f.write("\n")
 import os
-patch(live, os.path.expanduser("~"), drop_codeisland=True)
-patch(template, "${HOME}", drop_codeisland=False)
+patch(live, os.path.expanduser("~"), drop_codeisland=True, backup=True)
+patch(template, "${HOME}", drop_codeisland=False, backup=False)  # in git; no backup
 print("hooks installed")
 EOF
 
