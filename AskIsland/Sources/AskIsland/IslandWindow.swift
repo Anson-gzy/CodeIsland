@@ -1,0 +1,333 @@
+import AppKit
+import SwiftUI
+import Combine
+import AskIslandCore
+
+final class KeyablePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
+
+    override func keyDown(with event: NSEvent) {
+        // If a text field or field editor has focus, let it handle the key event
+        if let fieldEditor = firstResponder as? NSTextView, fieldEditor.isFieldEditor {
+            super.keyDown(with: event)
+            return
+        }
+
+        if IslandWindowController.shared?.handleKeyDown(event) == true {
+            return
+        }
+
+        super.keyDown(with: event)
+    }
+}
+
+private class IslandHostingView<Content: View>: NSHostingView<Content> {
+    private var applyingDeferred = false
+    private var pendingConstraintsValue: Bool?
+    private var pendingLayoutValue: Bool?
+
+    override func mouseDown(with event: NSEvent) {
+        window?.makeKey()
+        super.mouseDown(with: event)
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override var needsUpdateConstraints: Bool {
+        get { super.needsUpdateConstraints }
+        set {
+            if applyingDeferred {
+                super.needsUpdateConstraints = newValue
+                return
+            }
+            if pendingConstraintsValue == nil, super.needsUpdateConstraints == newValue { return }
+            let alreadyScheduled = pendingConstraintsValue != nil
+            pendingConstraintsValue = newValue
+            guard !alreadyScheduled else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let value = self.pendingConstraintsValue else { return }
+                self.pendingConstraintsValue = nil
+                self.applySuperNeedsUpdateConstraints(value)
+            }
+        }
+    }
+
+    private func applySuperNeedsUpdateConstraints(_ value: Bool) {
+        applyingDeferred = true
+        super.needsUpdateConstraints = value
+        applyingDeferred = false
+    }
+
+    override var needsLayout: Bool {
+        get { super.needsLayout }
+        set {
+            if applyingDeferred {
+                super.needsLayout = newValue
+                return
+            }
+            if pendingLayoutValue == nil, super.needsLayout == newValue { return }
+            let alreadyScheduled = pendingLayoutValue != nil
+            pendingLayoutValue = newValue
+            guard !alreadyScheduled else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let value = self.pendingLayoutValue else { return }
+                self.pendingLayoutValue = nil
+                self.applySuperNeedsLayout(value)
+            }
+        }
+    }
+
+    private func applySuperNeedsLayout(_ value: Bool) {
+        applyingDeferred = true
+        super.needsLayout = value
+        applyingDeferred = false
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if IslandWindowController.shared?.isPendingEmpty == true {
+            return nil
+        }
+        return super.hitTest(point)
+    }
+}
+
+@MainActor
+final class IslandWindowController: ObservableObject {
+    static weak var shared: IslandWindowController?
+
+    let store: AskStore
+    let cardState = QuestionCardState()
+
+    var panel: KeyablePanel?
+    private var cancellables = Set<AnyCancellable>()
+    private var knownRequestIds = Set<String>()
+    private var previousApp: NSRunningApplication?
+
+    @Published var isCollapsed: Bool = false {
+        didSet {
+            updateWindowFrame()
+        }
+    }
+    @Published var pulseTrigger: Int = 0
+
+    private var currentHeight: CGFloat = 0
+
+    var isPendingEmpty: Bool {
+        store.pending.isEmpty
+    }
+
+    init(store: AskStore) {
+        self.store = store
+        IslandWindowController.shared = self
+    }
+
+    func setup() {
+        // Track frontmost app before we are ever focused
+        if let front = NSWorkspace.shared.frontmostApplication,
+           front.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            self.previousApp = front
+        }
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                guard let self = self else { return }
+                if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                   app.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+                    self.previousApp = app
+                }
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.updateWindowFrame()
+            }
+        }
+
+        let rootView = IslandRootView(
+            store: store,
+            cardState: cardState,
+            isCollapsed: Binding(
+                get: { [weak self] in self?.isCollapsed ?? false },
+                set: { [weak self] in self?.isCollapsed = $0 }
+            ),
+            pulseTrigger: Binding(
+                get: { [weak self] in self?.pulseTrigger ?? 0 },
+                set: { [weak self] in self?.pulseTrigger = $0 }
+            ),
+            onFocusTextField: { [weak self] in
+                self?.makeKeyAndActivateApp()
+            },
+            onHeightChanged: { [weak self] height in
+                guard let self = self else { return }
+                self.currentHeight = height
+                self.updateWindowFrame(newHeight: height)
+            }
+        )
+
+        let hostingView = IslandHostingView(rootView: rootView)
+
+        let panel = KeyablePanel(
+            contentRect: NSRect(origin: .zero, size: NSSize(width: 480, height: 100)),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.isFloatingPanel = true
+        panel.acceptsMouseMovedEvents = true
+        panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) + 2)
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = false
+        panel.isMovableByWindowBackground = false
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        panel.sharingType = .readOnly
+        panel.ignoresMouseEvents = true
+        panel.contentView = hostingView
+
+        self.panel = panel
+
+        store.$pending
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] pending in
+                self?.handlePendingChange(pending)
+            }
+            .store(in: &cancellables)
+
+        updateWindowFrame()
+    }
+
+    func makeKeyAndActivateApp() {
+        if let front = NSWorkspace.shared.frontmostApplication,
+           front.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            previousApp = front
+        }
+        panel?.makeKey()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func handlePendingChange(_ pending: [AskRequest]) {
+        let newRequests = pending.filter { !knownRequestIds.contains($0.id) }
+        let currentIds = Set(pending.map(\.id))
+
+        if !newRequests.isEmpty {
+            // Play Glass sound once on arrival
+            NSSound(named: NSSound.Name("Glass"))?.play()
+
+            if knownRequestIds.isEmpty {
+                // Expanding for the first arrival
+                isCollapsed = false
+                panel?.ignoresMouseEvents = false
+                panel?.orderFrontRegardless()
+            } else if isCollapsed {
+                // Keep collapsed and pulse badge once
+                pulseTrigger += 1
+            }
+        }
+
+        knownRequestIds = currentIds
+
+        if pending.isEmpty {
+            // Nothing pending: ignore mouse events
+            panel?.ignoresMouseEvents = true
+
+            // Reactivate previously frontmost app
+            if let app = previousApp, !app.isTerminated {
+                app.activate()
+            }
+            previousApp = nil
+        } else {
+            panel?.ignoresMouseEvents = false
+            panel?.orderFrontRegardless()
+        }
+
+        updateWindowFrame()
+    }
+
+    func updateWindowFrame(newHeight: CGFloat? = nil) {
+        guard let panel = panel else { return }
+        let screen = ScreenDetector.preferredScreen
+        let screenFrame = screen.frame
+
+        if store.pending.isEmpty {
+            panel.setFrame(NSRect(x: screenFrame.midX, y: screenFrame.maxY, width: 0, height: 0), display: true)
+            return
+        }
+
+        let width: CGFloat
+        let height: CGFloat
+
+        if isCollapsed {
+            width = ScreenDetector.notchWidth(for: screen) + 24
+            height = ScreenDetector.topBarHeight(for: screen)
+        } else {
+            width = 480
+            let h = newHeight ?? currentHeight
+            let maxHeight = screenFrame.height * 0.7
+            let initialH = h > 0 ? h : 240
+            height = min(max(initialH, ScreenDetector.topBarHeight(for: screen) + 60), maxHeight)
+        }
+
+        let x = screenFrame.midX - width / 2
+        let y = screenFrame.maxY - height
+        panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
+    }
+
+    func handleKeyDown(_ event: NSEvent) -> Bool {
+        guard let request = store.pending.first else { return false }
+
+        // Esc: collapse
+        if event.keyCode == 53 {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                isCollapsed = true
+            }
+            return true
+        }
+
+        switch request.kind {
+        case .question:
+            // Return: submit if enabled
+            if event.keyCode == 36 || event.characters == "\r" {
+                if cardState.isSubmitEnabled(for: request) {
+                    cardState.submit(for: request, store: store)
+                    return true
+                }
+                return false
+            }
+
+            // 1-9: toggle option of first unanswered question
+            if let chars = event.characters, let firstChar = chars.first,
+               firstChar >= "1" && firstChar <= "9",
+               let digit = Int(String(firstChar)) {
+                let optionIndex = digit - 1
+                if cardState.toggleOption(for: request, optionIndex: optionIndex) {
+                    return true
+                }
+            }
+
+        case .action:
+            break
+
+        case .notify:
+            if event.keyCode == 36 || event.characters == "\r" {
+                store.resolve(request.id, AskResponse(id: request.id, status: .dismissed))
+                return true
+            }
+        }
+
+        return false
+    }
+}
