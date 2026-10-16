@@ -10,6 +10,13 @@ final class KeyablePanel: NSPanel {
         frameRect
     }
 
+    /// Take key status before the click is dispatched, so the first click on any control acts at once
+    /// (views that don't accept first mouse would otherwise swallow it as a "focus the window" click).
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown, !isKeyWindow { makeKey() }
+        super.sendEvent(event)
+    }
+
     override func keyDown(with event: NSEvent) {
         // If a text field or field editor has focus, let it handle the key event
         if let fieldEditor = firstResponder as? NSTextView, fieldEditor.isFieldEditor {

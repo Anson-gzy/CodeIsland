@@ -671,13 +671,6 @@ struct ExpandedIslandView: View {
         return "Agent"
     }
 
-    private var lastPathComponent: String? {
-        if let cwd = request.source?.cwd, !cwd.isEmpty {
-            return URL(fileURLWithPath: cwd).lastPathComponent
-        }
-        return nil
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             // Top spacer under notch
@@ -688,20 +681,10 @@ struct ExpandedIslandView: View {
             HStack(spacing: 6) {
                 Text(agentName)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(.white.opacity(0.55))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .layoutPriority(1)
-
-                if let folder = lastPathComponent {
-                    Text("·")
-                        .font(.system(size: 15))
-                        .foregroundColor(.white.opacity(0.55))
-                    Text(folder)
-                        .font(.system(size: 15))
-                        .foregroundColor(.white.opacity(0.55))
-                        .lineLimit(1)
-                }
 
                 if store.pending.count > 1 {
                     Text("·")

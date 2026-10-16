@@ -87,7 +87,7 @@ Screen: the one with a notch, else the main screen.
 - Nothing pending: nothing visible; the window ignores mouse events so the menu bar works underneath.
 - Pending, expanded (default when something arrives): island hangs from the notch, 480 pt wide, height fits the
   card up to 70% of the screen (card scrolls beyond), expanded glass background like CodeIsland. Shows the oldest
-  pending request. Header: session name (`source.sessionName`, else `source.agent`, else "Agent") · last path component of `source.cwd` ·
+  pending request. Header: session name (`source.sessionName`, else `source.agent`, else "Agent") ·
   "1/3" when more than one, and a chevron that collapses.
 - Pending, collapsed: a black pill the notch's width plus 32 pt wings on each side, showing the first request
   in one line; click expands. A new arrival while collapsed keeps it collapsed and pulses the glyph once.
@@ -193,8 +193,8 @@ title, detail, questions and options are the agent's words, shown verbatim in wh
 - Content is inset 28 pt from the left/right edges and 24 pt from the bottom so nothing sits on the rim.
 
 **Layout, like the compose sheet**
-- Title bar row under the notch: session name (else agent) 15 pt semibold white, one line, on the left (the sheet's "New Message"),
-  folder and "1/3" after it in secondary white (0.55); on the right a collapse button drawn as a small
+- Title bar row under the notch: session name (else agent) 15 pt semibold in secondary white (0.55), one line, on the left (the sheet's "New Message"),
+  "1/3" after it when more than one in secondary white (0.55); on the right a collapse button drawn as a small
   circular glass-like control (24 pt circle, white 0.12 fill, `chevron.up` 11 pt).
 - Below it the request title as a large heading: 20 pt semibold white, then the detail in 13 pt white 0.7.
 - Rows (no hairlines between options; a hairline only between questions):
@@ -210,7 +210,11 @@ title, detail, questions and options are the agent's words, shown verbatim in wh
     field; the password warning as a row with `lock.fill`, systemOrange text.
 - Bottom toolbar, right-aligned like the compose sheet's "Save draft" / "Send": secondary then primary, both
   Liquid Glass capsules (`glassEffect(.regular.interactive())`, 36 pt tall, 14 pt semibold white): secondary
-  is clear glass ("Decline", "Can't do it"), primary is blue-tinted glass ("Submit", "Done", "Got it"; disabled:
-  tint 0.35, label 0.6). Not the system `.glass` button styles: those grey out whenever the non-activating
-  panel is not the key window.
+  is clear glass ("Decline", "Can't do it"), primary is a systemBlue 0.9 fill on the glass ("Submit", "Done",
+  "Got it"; disabled: fill 0.35, label 0.6). Buttons look the same whether or not the panel has focus: not the
+  system `.glass` styles and not a glass tint, both of which grey out whenever the non-activating panel is not
+  the key window.
+- Focus is never a prerequisite: the panel takes key status on mouse-down before dispatching the click
+  (`KeyablePanel.sendEvent`), so the first click on any control acts at once while another app stays
+  frontmost.
 - Collapsed pill stays solid black (it merges with the notch).

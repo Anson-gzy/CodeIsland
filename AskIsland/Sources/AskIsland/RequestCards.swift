@@ -414,14 +414,17 @@ struct GlassCapsuleButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
-        let tint: Color? = prominent ? Color(nsColor: .systemBlue).opacity(isEnabled ? 0.9 : 0.35) : nil
+        // The blue is a plain fill on top of the glass: a glass tint fades to grey whenever the panel is not
+        // the key window, and the buttons must look the same with or without focus.
+        let fill = prominent ? Color(nsColor: .systemBlue).opacity(isEnabled ? 0.9 : 0.35) : Color.clear
         return configuration.label
             .font(.system(size: 14, weight: .semibold))
             .foregroundColor(.white.opacity(isEnabled ? 1 : 0.6))
             .padding(.horizontal, 20)
             .frame(height: 36)
+            .background(Capsule().fill(fill))
             .contentShape(Capsule())
-            .glassEffect(.regular.tint(tint).interactive(), in: Capsule())
+            .glassEffect(.regular.interactive(), in: Capsule())
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
