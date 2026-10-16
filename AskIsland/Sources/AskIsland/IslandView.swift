@@ -67,8 +67,8 @@ struct ClearLensGlass: NSViewRepresentable {
         let tint = NSView()
         tint.wantsLayer = true
         let gradient = CAGradientLayer()
-        gradient.colors = [1, 1, 0.85, 0.55, 0.22, 0].map { NSColor.black.withAlphaComponent($0).cgColor }
-        gradient.locations = [0, 0.42, 0.55, 0.7, 0.86, 1]
+        gradient.colors = [1, 1, 0.9, 0.8, 0.7].map { NSColor.black.withAlphaComponent($0).cgColor }
+        gradient.locations = [0, 0.35, 0.6, 0.85, 1]
         gradient.startPoint = CGPoint(x: 0.5, y: 1)
         gradient.endPoint = CGPoint(x: 0.5, y: 0)
         tint.layer = gradient
@@ -127,10 +127,16 @@ struct ContentHeightPreferenceKey: PreferenceKey {
 struct IslandRootView: View {
     @ObservedObject var store: AskStore
     @ObservedObject var cardState: QuestionCardState
-    @Binding var isCollapsed: Bool
-    @Binding var pulseTrigger: Int
+    /// Owns isCollapsed / pulseTrigger; observed so the island redraws when they change.
+    @ObservedObject var controller: IslandWindowController
     var onFocusTextField: () -> Void
     var onHeightChanged: (CGFloat) -> Void
+
+    private var isCollapsed: Bool { controller.isCollapsed }
+    private var pulseTrigger: Int { controller.pulseTrigger }
+    private var collapsedBinding: Binding<Bool> {
+        Binding(get: { controller.isCollapsed }, set: { controller.isCollapsed = $0 })
+    }
 
     var body: some View {
         Group {
@@ -146,24 +152,26 @@ struct IslandRootView: View {
                     pulseTrigger: pulseTrigger,
                     onExpand: {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            isCollapsed = false
+                            controller.isCollapsed = false
                         }
                     }
                 )
                 .onAppear {
-                    onHeightChanged(ScreenDetector.notchHeight)
+                    onHeightChanged(ScreenDetector.notchHeight + CollapsedIslandView.stripHeight)
                 }
             } else if let request = store.pending.first {
                 ExpandedIslandView(
                     request: request,
                     store: store,
                     cardState: cardState,
-                    isCollapsed: $isCollapsed,
+                    isCollapsed: collapsedBinding,
                     onFocusTextField: onFocusTextField,
                     onHeightChanged: onHeightChanged
                 )
             }
         }
+        // The window is sized by the controller; pin content to the top edge under the notch.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 
@@ -184,15 +192,18 @@ struct CollapsedIslandView: View {
         ScreenDetector.notchWidth + 24
     }
 
+    /// The hardware notch hides everything drawn at its height, so the badge sits in a strip below it.
+    static let stripHeight: CGFloat = 26
+
     var body: some View {
-        let shape = NotchPanelShape(topExtension: 3, bottomRadius: 12, minHeight: notchHeight)
+        let shape = NotchPanelShape(topExtension: 3, bottomRadius: 12, minHeight: notchHeight + Self.stripHeight)
 
         ZStack {
             // Black pill
             shape.fill(.black)
 
-            // Orange badge
-            HStack {
+            // Orange badge, below the notch
+            HStack(spacing: 6) {
                 Spacer()
                 Text("\(count)")
                     .font(.system(size: 11, weight: .bold))
@@ -204,11 +215,15 @@ struct CollapsedIslandView: View {
                             .fill(Color.orange)
                     )
                     .scaleEffect(pulseScale)
+                Text("待你处理")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.85))
                 Spacer()
             }
-            .frame(height: notchHeight)
+            .frame(height: Self.stripHeight)
+            .frame(maxHeight: .infinity, alignment: .bottom)
         }
-        .frame(width: notchWidth, height: notchHeight)
+        .frame(width: notchWidth, height: notchHeight + Self.stripHeight)
         .contentShape(Rectangle())
         .onTapGesture {
             onExpand()

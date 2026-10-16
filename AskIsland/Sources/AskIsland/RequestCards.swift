@@ -172,9 +172,12 @@ struct QuestionCardView: View {
                                 .fill(Color.accentColor.opacity(0.15))
                         )
                 }
-                Text(question.question)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white)
+                // A single question whose text is already the card title would read twice.
+                if !(request.questions.count == 1 && question.question == request.title) {
+                    Text(question.question)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.white)
+                }
             }
 
             // Options

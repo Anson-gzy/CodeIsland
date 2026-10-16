@@ -159,14 +159,7 @@ final class IslandWindowController: ObservableObject {
         let rootView = IslandRootView(
             store: store,
             cardState: cardState,
-            isCollapsed: Binding(
-                get: { [weak self] in self?.isCollapsed ?? false },
-                set: { [weak self] in self?.isCollapsed = $0 }
-            ),
-            pulseTrigger: Binding(
-                get: { [weak self] in self?.pulseTrigger ?? 0 },
-                set: { [weak self] in self?.pulseTrigger = $0 }
-            ),
+            controller: self,
             onFocusTextField: { [weak self] in
                 self?.makeKeyAndActivateApp()
             },
@@ -178,6 +171,9 @@ final class IslandWindowController: ObservableObject {
         )
 
         let hostingView = IslandHostingView(rootView: rootView)
+        // The controller owns the window frame (centered under the notch); a hosting view that
+        // resizes the window to its content keeps the old origin and drifts the island sideways.
+        hostingView.sizingOptions = []
 
         let panel = KeyablePanel(
             contentRect: NSRect(origin: .zero, size: NSSize(width: 480, height: 100)),
@@ -189,6 +185,7 @@ final class IslandWindowController: ObservableObject {
         panel.acceptsMouseMovedEvents = true
         panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) + 2)
         panel.backgroundColor = .clear
+        panel.appearance = NSAppearance(named: .darkAqua)
         panel.isOpaque = false
         panel.hasShadow = false
         panel.isMovableByWindowBackground = false
@@ -272,7 +269,7 @@ final class IslandWindowController: ObservableObject {
 
         if isCollapsed {
             width = ScreenDetector.notchWidth(for: screen) + 24
-            height = ScreenDetector.topBarHeight(for: screen)
+            height = ScreenDetector.topBarHeight(for: screen) + CollapsedIslandView.stripHeight
         } else {
             width = 480
             let h = newHeight ?? currentHeight
