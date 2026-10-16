@@ -123,18 +123,10 @@ The island grows out of the notch and shrinks back into it; the window never res
   edge at the screen top. Fully transparent pixels of the non-opaque borderless panel let clicks through (that
   is how upstream does it; no hit-test override needed). `ignoresMouseEvents` stays true while nothing is
   pending.
-- One island view, top-anchored, horizontally centered, whose frame and shape animate between three sizes:
-  hidden = the hardware notch (notchWidth × notchHeight, plain black: invisible against the notch);
-  collapsed = notchWidth + 24 × notchHeight + 26 (black pill, badge below the notch);
-  expanded = 480 × measured content height (clamped to the window).
-  `NotchPanelShape` topExtension / bottomRadius animate with it (hidden 3/8, collapsed 3/12, expanded 14/24).
-- Expanded background = the existing glass (`IslandBackground` with `ClearLensGlass`); other states plain black.
-  The glass fades in with the expansion (opacity transition), not popping.
-- Card content and the collapsed badge use upstream's transition: blur 5 + opacity, combined with
-  `.scale(0.96, anchor: .top)`; switching from one request to the next uses the same transition.
-- Curves (copy upstream `NotchAnimation`): open = spring(response 0.42, damping 0.82); close =
-  spring(response 0.38, damping 1.0) (critically damped so the shape never overshoots above the notch).
-  Expanding uses open, collapsing/hiding uses close.
+- One island glass (`IslandGlass`), top-anchored and horizontally centered, morphs between three sizes:
+  hidden = notchWidth × notchHeight (faded out); collapsed = notchWidth + 90 × notchHeight + 26 (dark pill,
+  badge below the notch); expanded = 480 × measured content height (clamped to the window). Curves and
+  content transitions: see "Motion" under Visual style.
 - First arrival: hidden → expanded (grows from the notch). Resolving the last request: expanded → hidden,
   then `ignoresMouseEvents = true` after the close animation ends.
 
