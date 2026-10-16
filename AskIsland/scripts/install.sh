@@ -80,5 +80,5 @@ print("hooks installed")
 EOF
 
 sleep 1
-"$HOME/.local/bin/ask-island" notify "AskIsland 已安装" --detail "agent 需要你时会在这里问你" --agent install >/dev/null \
+"$HOME/.local/bin/ask-island" notify "AskIsland installed" --detail "Agents will ask you here when they need you." --agent install >/dev/null \
   && echo "AskIsland running" || echo "AskIsland not reachable yet"
