@@ -4,8 +4,8 @@
 #   ~/.local/bin/ask-island                 the CLI agents call
 #   ~/Library/LaunchAgents/local.askisland.plist
 #   Claude Code hooks: PermissionRequest + Notification → `ask-island hook`, added to the live
-#   ~/.claude/settings.json and to the maat template (~/.agents/claude-config/settings.json) so a
-#   later `maat render` keeps them. Old CodeIsland hook entries are removed from the live file.
+#   ~/.claude/settings.json and, when it exists, to the maat template (~/.agents/claude-config/settings.json)
+#   so a later `maat render` keeps them. Old CodeIsland hook entries are removed from the live file.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
@@ -57,6 +57,13 @@ OURS = {
     "Notification": {"matcher": "", "hooks": [{"type": "command", "command": "${HOME}/.local/bin/ask-island hook", "timeout": 10}]},
 }
 def patch(path, home, drop_codeisland, backup):
+    import os
+    if not os.path.exists(path):
+        if backup:  # the live settings file: start one
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f: f.write("{}\n")
+        else:       # the optional maat template: only patched when it exists
+            return
     with open(path) as f: d = json.load(f)
     hooks = d.setdefault("hooks", {})
     for ev in list(hooks):
