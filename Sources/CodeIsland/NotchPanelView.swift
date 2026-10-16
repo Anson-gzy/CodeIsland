@@ -397,12 +397,15 @@ struct NotchPanelView: View {
             .frame(width: panelWidth)
             .clipped()
             .background(
-                NotchPanelShape(
-                    topExtension: shouldShowExpanded ? 14 : 3,
-                    bottomRadius: shouldShowExpanded ? 24 : 12,
-                    minHeight: notchHeight
+                IslandBackground(
+                    shape: NotchPanelShape(
+                        topExtension: shouldShowExpanded ? 14 : 3,
+                        bottomRadius: shouldShowExpanded ? 24 : 12,
+                        minHeight: notchHeight
+                    ),
+                    expanded: shouldShowExpanded,
+                    notchHeight: notchHeight
                 )
-                .fill(.black)
             )
             .offset(y: curtainOffset)
             .opacity(curtainOpacity)
@@ -4993,6 +4996,43 @@ private struct ClaudeLogoShape: Shape {
 }
 
 // MARK: - Notch Panel Shape (inverse radius at top, regular radius at bottom)
+
+/// Island backdrop. Collapsed it stays solid black so it reads as part of the
+/// hardware notch; expanded (macOS 26+) the body turns into Liquid Glass while
+/// the band under the notch fades from black so the seam stays invisible.
+private struct IslandBackground: View {
+    let shape: NotchPanelShape
+    let expanded: Bool
+    let notchHeight: CGFloat
+
+    var body: some View {
+        if #available(macOS 26.0, *), expanded {
+            GeometryReader { geo in
+                // Solid under the notch, then fade out over one more notch height.
+                let solid = min(notchHeight / max(geo.size.height, 1), 1)
+                let fade = min(notchHeight * 2.2 / max(geo.size.height, 1), 1)
+                ZStack {
+                    Color.clear
+                        .glassEffect(.clear.tint(.black.opacity(0.6)), in: shape)
+                    shape.fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .black, location: 0),
+                                .init(color: .black, location: solid),
+                                .init(color: .black.opacity(0), location: fade),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                }
+            }
+            .transition(.opacity)
+        } else {
+            shape.fill(.black)
+        }
+    }
+}
 
 private struct NotchPanelShape: Shape {
     var topExtension: CGFloat
