@@ -81,7 +81,7 @@ struct NotchPanelShape: Shape {
         p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + ext))
         p.addCurve(
             to: CGPoint(x: rect.minX - ext, y: rect.minY),
-            control1: CGPoint(x: rect.minX, y: rect.minY + ext * 0.35),
+            control1: CGPoint(x: rect.minX - ext, y: rect.minY + ext * 0.35),
             control2: CGPoint(x: rect.minX - ext * 0.35, y: rect.minY)
         )
         p.closeSubpath()
@@ -102,17 +102,20 @@ struct ClearLensGlass: NSViewRepresentable {
         let tint = NSView()
         tint.wantsLayer = true
         let gradient = CAGradientLayer()
-        gradient.colors = [1, 1, 0.85, 0.55, 0.22, 0].map { NSColor.black.withAlphaComponent($0).cgColor }
-        gradient.locations = [0, 0.42, 0.55, 0.7, 0.86, 1]
+        gradient.colors = [1.0, 1.0, 0.75, 0.5, 0.4, 0.35].map { NSColor.black.withAlphaComponent($0).cgColor }
+        gradient.locations = [0, 0.2, 0.35, 0.55, 0.8, 1].map { NSNumber(value: Double($0)) }
         gradient.startPoint = CGPoint(x: 0.5, y: 1)
         gradient.endPoint = CGPoint(x: 0.5, y: 0)
         tint.layer = gradient
+        tint.autoresizingMask = [.width, .height]
         glass.contentView = tint
+        glass.cornerRadius = cornerRadius
         return glass
     }
 
     func updateNSView(_ glass: NSGlassEffectView, context: Context) {
         glass.cornerRadius = cornerRadius
+        glass.contentView?.layer?.frame = glass.bounds
     }
 }
 
@@ -123,8 +126,8 @@ struct IslandBackground: View {
 
     var body: some View {
         if #available(macOS 26.0, *), expanded {
-            ClearLensGlass(cornerRadius: shape.bottomRadius)
-                .padding(.top, -shape.bottomRadius * 2)
+            ClearLensGlass(cornerRadius: 56)
+                .padding(.top, -56 * 2)
                 .overlay(
                     shape.fill(.black)
                         .mask(
@@ -190,6 +193,10 @@ struct IslandRootView: View {
         }
     }
 
+    private var isExpanded: Bool {
+        currentState == .expanded
+    }
+
     private var screen: NSScreen {
         ScreenDetector.preferredScreen
     }
@@ -206,100 +213,82 @@ struct IslandRootView: View {
         screen.frame.height * 0.7
     }
 
-    private var islandWidth: CGFloat {
-        switch currentState {
-        case .hidden:
-            return notchWidth
-        case .collapsed:
-            return notchWidth + 24
-        case .expanded:
-            return 480
-        }
+    private var expandedHeight: CGFloat {
+        let h = measuredExpandedHeight > 0 ? measuredExpandedHeight : min(240, maxPanelHeight)
+        return min(max(h, notchHeight + 60), maxPanelHeight)
     }
 
-    private var islandHeight: CGFloat {
-        switch currentState {
-        case .hidden:
-            return notchHeight
-        case .collapsed:
-            return notchHeight + CollapsedIslandView.stripHeight
-        case .expanded:
-            let h = measuredExpandedHeight > 0 ? measuredExpandedHeight : min(240, maxPanelHeight)
-            return min(max(h, notchHeight + 60), maxPanelHeight)
-        }
+    private var glassScaleX: CGFloat {
+        isExpanded ? 1.0 : (notchWidth / 480.0)
     }
 
-    private var topExtension: CGFloat {
-        switch currentState {
-        case .hidden:
-            return 3
-        case .collapsed:
-            return 3
-        case .expanded:
-            return 14
-        }
-    }
-
-    private var bottomRadius: CGFloat {
-        switch currentState {
-        case .hidden:
-            return 8
-        case .collapsed:
-            return 12
-        case .expanded:
-            return 24
-        }
+    private var glassScaleY: CGFloat {
+        isExpanded ? 1.0 : (notchHeight / expandedHeight)
     }
 
     var body: some View {
         ZStack(alignment: .top) {
-            ZStack(alignment: .top) {
-                if currentState == .collapsed {
-                    CollapsedIslandView(
-                        count: store.pending.count,
-                        pulseTrigger: pulseTrigger,
-                        onExpand: {
-                            withAnimation(NotchAnimation.open) {
-                                controller.isCollapsed = false
-                            }
-                        }
-                    )
-                    .transition(.islandCard)
-                } else if currentState == .expanded, let request = store.pending.first {
-                    ExpandedIslandView(
-                        request: request,
-                        store: store,
-                        cardState: cardState,
-                        isCollapsed: collapsedBinding,
-                        onFocusTextField: onFocusTextField,
-                        onHeightChanged: { height in
-                            measuredExpandedHeight = height
-                        }
-                    )
-                    .id(request.id)
-                    .transition(.islandCard)
-                }
-            }
-            .frame(width: islandWidth, height: islandHeight, alignment: .top)
-            .clipped()
-            .background(
-                IslandBackground(
-                    shape: NotchPanelShape(
-                        topExtension: topExtension,
-                        bottomRadius: bottomRadius,
-                        minHeight: notchHeight
-                    ),
-                    expanded: currentState == .expanded,
-                    notchHeight: notchHeight
-                )
+            // Glass background laid out at final size (480 x expandedHeight)
+            // Animated with scaleEffect anchored at top from notch width/height ratios to 1
+            IslandBackground(
+                shape: NotchPanelShape(
+                    topExtension: 14,
+                    bottomRadius: 24,
+                    minHeight: notchHeight
+                ),
+                expanded: true,
+                notchHeight: notchHeight
             )
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if currentState == .collapsed {
+            .frame(width: 480, height: expandedHeight, alignment: .top)
+            .clipped()
+            .scaleEffect(x: glassScaleX, y: glassScaleY, anchor: .top)
+            .opacity(isExpanded ? 1.0 : 0.0)
+            .allowsHitTesting(isExpanded)
+
+            // Collapsed pill
+            if currentState == .collapsed {
+                CollapsedIslandView(
+                    count: store.pending.count,
+                    pulseTrigger: pulseTrigger,
+                    onExpand: {
+                        withAnimation(NotchAnimation.open) {
+                            controller.isCollapsed = false
+                        }
+                    }
+                )
+                .frame(width: notchWidth + 24, height: notchHeight + CollapsedIslandView.stripHeight, alignment: .top)
+                .background(
+                    NotchPanelShape(
+                        topExtension: 3,
+                        bottomRadius: 12,
+                        minHeight: notchHeight
+                    )
+                    .fill(.black)
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {
                     withAnimation(NotchAnimation.open) {
                         controller.isCollapsed = false
                     }
                 }
+                .transition(.islandCard)
+            }
+
+            // Expanded card content
+            if isExpanded, let request = store.pending.first {
+                ExpandedIslandView(
+                    request: request,
+                    store: store,
+                    cardState: cardState,
+                    isCollapsed: collapsedBinding,
+                    onFocusTextField: onFocusTextField,
+                    onHeightChanged: { height in
+                        measuredExpandedHeight = height
+                    }
+                )
+                .frame(width: 480, height: expandedHeight, alignment: .top)
+                .id(request.id)
+                .transition(.islandCard)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -393,10 +382,6 @@ struct ExpandedIslandView: View {
     }
 
     var body: some View {
-        let totalFittedHeight = measuredContentHeight > 0
-            ? min(measuredContentHeight + notchHeight + 16, maxPanelHeight)
-            : min(240, maxPanelHeight)
-
         VStack(spacing: 0) {
             // Top spacer under notch
             Spacer()
@@ -405,29 +390,25 @@ struct ExpandedIslandView: View {
             // Header bar
             HStack(spacing: 6) {
                 Text(agentName)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.85))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
 
                 if let folder = lastPathComponent {
                     Text("·")
-                        .foregroundColor(.white.opacity(0.4))
+                        .font(.system(size: 15))
+                        .foregroundColor(.white.opacity(0.55))
                     Text(folder)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.7))
+                        .font(.system(size: 15))
+                        .foregroundColor(.white.opacity(0.55))
                 }
 
                 if store.pending.count > 1 {
                     Text("·")
-                        .foregroundColor(.white.opacity(0.4))
+                        .font(.system(size: 15))
+                        .foregroundColor(.white.opacity(0.55))
                     Text("1/\(store.pending.count)")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.orange)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule()
-                                .fill(Color.orange.opacity(0.2))
-                        )
+                        .font(.system(size: 15))
+                        .foregroundColor(.white.opacity(0.55))
                 }
 
                 Spacer()
@@ -437,15 +418,19 @@ struct ExpandedIslandView: View {
                         isCollapsed = true
                     }
                 }) {
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.6))
-                        .padding(4)
+                    Circle()
+                        .fill(Color.white.opacity(0.12))
+                        .frame(width: 24, height: 24)
+                        .overlay(
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.white)
+                        )
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 10)
+            .padding(.horizontal, 28)
+            .padding(.bottom, 12)
 
             // Card body
             ScrollView(.vertical, showsIndicators: true) {
@@ -471,25 +456,24 @@ struct ExpandedIslandView: View {
                         )
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
+                .padding(.horizontal, 28)
+                .padding(.bottom, 24)
                 // The lower card sits on clear glass; a tight dark halo keeps text legible over any wallpaper.
                 .shadow(color: .black.opacity(0.9), radius: 1.5)
                 .shadow(color: .black.opacity(0.6), radius: 6)
                 .background(
                     GeometryReader { geo in
-                        Color.clear.preference(key: ContentHeightPreferenceKey.self, value: geo.size.height + 40)
+                        Color.clear.preference(key: ContentHeightPreferenceKey.self, value: geo.size.height)
                     }
                 )
             }
         }
         .frame(width: 480)
-        .frame(height: max(totalFittedHeight, notchHeight + 60))
         .onPreferenceChange(ContentHeightPreferenceKey.self) { height in
             if height > 0 {
                 self.measuredContentHeight = height
-                let newTotal = min(height + notchHeight + 16, maxPanelHeight)
-                onHeightChanged(newTotal)
+                let total = min(height + notchHeight + 40, maxPanelHeight)
+                onHeightChanged(total)
             }
         }
     }
