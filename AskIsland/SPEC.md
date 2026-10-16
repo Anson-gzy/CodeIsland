@@ -140,14 +140,14 @@ look), styled like a macOS 26 compose sheet. All UI text is English.
   `min(64, height/2)`: on this glass the refracting rim is as wide as the corner radius, so a large radius is
   what gives the thick lensing border on the sides and bottom.
 - Thick, slightly frosted slab: `ThickGlassView` retunes the backdrop's private `glassBackground` filter on
-  every layout: `inputBlurRadius` 5 (blur opacities 1), inner refraction height 86 / amount -110, outer refraction
+  every layout: `inputBlurRadius` 3 (blur opacities 1), inner refraction height 86 / amount -110, outer refraction
   height 36 / amount 22 (variant 11 ships blur 0, inner 20 / -50, outer 16 / 10). The white specular rim (layer `@3`) stays, as the
   thin bright line along the bottom edge of the reference. The rim is thinned through its private
   `CASDFKeyFillHighlightEffect`: `keyHeight` / `fillHeight` 1.5 (default 3.5), `diffuseHeightScale` 4 (default 8).
 - Tint inside the glass, as fractions of the capsule height (measured from the reference video): solid black
   over the top 47% (or down to notch height + 40, whichever is lower), then a soft fade (half linear, half
   smoothstep, 14 stops) ending at ~90%: black alpha 1 → 0. A milky white haze is its own gradient from where the fade starts to the
-  bottom edge, easing in (t^1.2) up to 0.42, so the bottom reads as white frosted glass, not just clear blur. The
+  bottom edge, easing in (t^1.2) up to 0.3, so the bottom reads as white frosted glass, not just clear blur. The
   fade only opens up as the capsule grows (`reveal` = (height − 180) / 220, clamped), so the pill and the
   mid-morph frames stay dark like the reference. Text keeps its tight dark shadow.
 - The same capsule is the collapsed pill (notch width + 90 by notch height + 26): at that size it is black

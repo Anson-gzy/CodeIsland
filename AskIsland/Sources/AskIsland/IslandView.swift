@@ -51,7 +51,7 @@ extension AnyTransition {
 /// and filters when its shape changes (macOS 27.2).
 @available(macOS 26.0, *)
 final class ThickGlassView: NSGlassEffectView {
-    static let blurRadius = 5.0
+    static let blurRadius = 3.0
     static let refractionHeight = 86.0
     static let refractionAmount = -110.0
     static let outerRefractionHeight = 36.0
@@ -128,7 +128,7 @@ struct ClearLensGlass: NSViewRepresentable {
         }
     }
 
-    static let milkMax = 0.42
+    static let milkMax = 0.3
 
     func makeNSView(context: Context) -> NSGlassEffectView {
         let glass = ThickGlassView()
