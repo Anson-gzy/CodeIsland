@@ -62,6 +62,20 @@ final class ThickGlassView: NSGlassEffectView {
         if let layer { tune(layer) }
     }
 
+    /// Rim highlight width: the rim's private CASDFKeyFillHighlightEffect draws it `keyHeight` / `fillHeight`
+    /// points wide (3.5 by default) with a soft glow `diffuseHeightScale` times that (8). Narrower here.
+    static let rimHeight = 1.5
+    static let rimDiffuseScale = 4.0
+
+    private func thinRim(_ rim: CALayer) {
+        guard let effect = rim.value(forKey: "effect") as? NSObject,
+              effect.responds(to: Selector(("setKeyHeight:"))) else { return }
+        effect.setValue(Self.rimHeight, forKey: "keyHeight")
+        effect.setValue(Self.rimHeight, forKey: "fillHeight")
+        effect.setValue(Self.rimDiffuseScale, forKey: "diffuseHeightScale")
+        rim.setValue(effect, forKey: "effect")
+    }
+
     /// Keeps the white specular rim (layer "@3") on the top and sides but fades it out before the bottom
     /// corners, so the bottom edge has refraction without a bright line.
     private func maskBottom(ofRim rim: CALayer) {
@@ -85,7 +99,10 @@ final class ThickGlassView: NSGlassEffectView {
     }
 
     private func tune(_ layer: CALayer) {
-        if layer.name == "@3" { maskBottom(ofRim: layer) }
+        if layer.name == "@3" {
+            thinRim(layer)
+            maskBottom(ofRim: layer)
+        }
         if String(describing: type(of: layer)) == "CABackdropLayer",
            layer.filters?.contains(where: { ($0 as AnyObject).value(forKey: "name") as? String == "glassBackground" }) == true {
             let k = "filters.glassBackground."

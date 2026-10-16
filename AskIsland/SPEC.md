@@ -151,7 +151,8 @@ look), styled like a macOS 26 compose sheet. All UI text is English.
   every layout: `inputBlurRadius` 5 (blur opacities 1), inner refraction height 86 / amount -110, outer refraction
   height 36 / amount 22 (variant 11 ships blur 0, inner 20 / -50, outer 16 / 10). The white specular rim (layer `@3`) stays on the
   top and sides but a gradient mask fades it out from radius × 1.1 above the bottom to radius × 0.45, so the
-  bottom edge has no bright line (the glass's layers are top-down, y = 0 at the top).
+  bottom edge has no bright line (the glass's layers are top-down, y = 0 at the top). The rim is thinned through its private
+  `CASDFKeyFillHighlightEffect`: `keyHeight` / `fillHeight` 1.5 (default 3.5), `diffuseHeightScale` 4 (default 8).
 - Tint inside the glass, as fractions of the capsule height (measured from the reference video): solid black
   over the top 47% (or down to notch height + 40, whichever is lower), then a soft fade (half linear, half
   smoothstep, 14 stops) ending at ~90%: black alpha 1 → 0.06. A milky white haze is its own gradient from where the fade starts to the
