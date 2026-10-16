@@ -147,11 +147,13 @@ look), styled like a macOS 26 compose sheet. All UI text is English.
 - `ClearLensGlass` (`_variant` 11), all four corners round, top edge on the screen's top edge, corner radius
   `min(56, height/2)`: on this glass the refracting rim is as wide as the corner radius, so a large radius is
   what gives the thick lensing border on the sides and bottom.
-- No white specular rim: `RimlessGlassView` hides the glass's layer named `@3` (the rim highlight on macOS
-  27.2) on every layout.
+- Thick, slightly frosted slab: `ThickGlassView` retunes the backdrop's private `glassBackground` filter on
+  every layout: `inputBlurRadius` 5 (blur opacities 1), `inputInnerRefractionHeight` 48,
+  `inputInnerRefractionAmount` -75 (variant 11 ships 0 / 20 / -50). The white specular rim (layer `@3`) stays
+  on: it is what makes the edge read as thick glass, as in the "Search or Ask" reference.
 - Tint inside the glass, positions in points from the top (`s` = notch height + 40, the title row): black
   alpha 1 down to `s`, then 0.72 at `s+36`, 0.4 at `s+90`, 0.22 at `s+170`, 0.16 at the bottom; under it a
-  milky white haze, 0 down to `s`, 0.08 at `s+120`, 0.13 at the bottom. The lower part is never plain clear:
+  milky white haze, 0 down to `s`, 0.17 at `s+120`, 0.28 at the bottom. The lower part is never plain clear:
   it reads as slightly white glass. Text keeps its tight dark shadow.
 - The same capsule is the collapsed pill (notch width + 90 by notch height + 26): at that size it is black
   all the way down.

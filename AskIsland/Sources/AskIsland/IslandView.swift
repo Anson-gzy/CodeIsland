@@ -45,26 +45,37 @@ extension AnyTransition {
 
 // MARK: - Glass
 
-/// Glass whose white specular rim is switched off: the reference has refraction at the edge but no
-/// bright line. Layer "@3" of NSGlassEffectView draws that rim (macOS 27.2); "@1" carries the content and
-/// must stay. Re-applied on every layout because the glass rebuilds its layers when its shape changes.
+/// Variant-11 glass retuned to read as a thick, slightly frosted slab: the backdrop's private
+/// `glassBackground` filter gets a light blur and a deeper inner refraction band, and the white specular
+/// rim (layer "@3") stays on. Values are re-applied on every layout because the glass rebuilds its layers
+/// and filters when its shape changes (macOS 27.2).
 @available(macOS 26.0, *)
-final class RimlessGlassView: NSGlassEffectView {
+final class ThickGlassView: NSGlassEffectView {
+    static let blurRadius = 5.0
+    static let refractionHeight = 48.0
+    static let refractionAmount = -75.0
+
     override func layout() {
         super.layout()
-        hideRim(in: layer)
+        if let layer { tune(layer) }
     }
 
-    private func hideRim(in layer: CALayer?) {
-        guard let layer else { return }
-        if layer.name == "@3" { layer.isHidden = true }
-        layer.sublayers?.forEach { hideRim(in: $0) }
+    private func tune(_ layer: CALayer) {
+        if String(describing: type(of: layer)) == "CABackdropLayer",
+           layer.filters?.contains(where: { ($0 as AnyObject).value(forKey: "name") as? String == "glassBackground" }) == true {
+            let k = "filters.glassBackground."
+            layer.setValue(Self.blurRadius, forKeyPath: k + "inputBlurRadius")
+            for i in 0..<4 { layer.setValue(1.0, forKeyPath: k + "inputBlurOpacity\(i)") }
+            layer.setValue(Self.refractionHeight, forKeyPath: k + "inputInnerRefractionHeight")
+            layer.setValue(Self.refractionAmount, forKeyPath: k + "inputInnerRefractionAmount")
+        }
+        layer.sublayers?.forEach { tune($0) }
     }
 }
 
-/// Clear lens glass (private variant 11: no background blur, refraction at the edge) tinted from the top:
-/// solid black over the notch and the title row, then thinning out into a faint milky haze, so the lower
-/// part reads as slightly frosted-white glass rather than a hole in the panel.
+/// Lens glass (private variant 11, retuned by `ThickGlassView`) tinted from the top: solid black over the
+/// notch and the title row, then thinning out into a milky white haze, so the lower part reads as frosted
+/// white glass rather than a hole in the panel.
 @available(macOS 26.0, *)
 struct ClearLensGlass: NSViewRepresentable {
     var cornerRadius: CGFloat
@@ -97,7 +108,7 @@ struct ClearLensGlass: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSGlassEffectView {
-        let glass = RimlessGlassView()
+        let glass = ThickGlassView()
         glass.style = .clear
         if glass.responds(to: Selector(("set_variant:"))) {
             glass.setValue(11, forKey: "_variant")
@@ -125,7 +136,7 @@ struct ClearLensGlass: NSViewRepresentable {
         CATransaction.setDisableActions(true)
         tint.black.colors = [1.0, 1.0, 0.72, 0.4, 0.22, 0.16].map { NSColor.black.withAlphaComponent($0).cgColor }
         tint.black.locations = [at(0), at(s), at(s + 36), at(s + 90), at(s + 170), at(h)]
-        tint.milk.colors = [0.0, 0.0, 0.08, 0.13].map { NSColor.white.withAlphaComponent($0).cgColor }
+        tint.milk.colors = [0.0, 0.0, 0.17, 0.28].map { NSColor.white.withAlphaComponent($0).cgColor }
         tint.milk.locations = [at(0), at(s), at(s + 120), at(h)]
         CATransaction.commit()
         tint.needsLayout = true
