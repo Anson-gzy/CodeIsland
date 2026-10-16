@@ -42,16 +42,16 @@ missing: id "", questions [], createdAt now; `AskQuestion` options [], multiSele
 dead, or the connection is refused. No request timeout of its own (a question may wait hours).
 
 **ClaudeHook** (pure functions, no I/O): Claude Code hook stdin JSON → AskRequest?, and AskResponse → stdout JSON.
-- `PermissionRequest` + tool `AskUserQuestion`: kind question, title "Claude 在问你", one AskQuestion per
+- `PermissionRequest` + tool `AskUserQuestion`: kind question, title "Claude has a question", one AskQuestion per
   `tool_input.questions[]` (header, question, options label/description, multiSelect), allowText true;
   source agent "claude", cwd, session_id. Answered → `{"hookSpecificOutput":{"hookEventName":"PermissionRequest",
   "decision":{"behavior":"allow","updatedInput":{...original tool_input, "questions": original questions,
   "answers": {<question text>: <AskAnswer.display>}}}}}`. Duplicate question texts get keys "text_2", "text_3".
-  Declined / timeout / dismissed → `"decision":{"behavior":"deny","message":"用户没有在 AskIsland 回答"}` (append
+  Declined / timeout / dismissed → `"decision":{"behavior":"deny","message":"The user did not answer in AskIsland"}` (append
   the note when there is one).
-- `PermissionRequest` + any other tool: question, title "Claude 想用 <tool>", detail = `command` for Bash,
+- `PermissionRequest` + any other tool: question, title "Claude wants to use <tool>", detail = `command` for Bash,
   `file_path` for Write/Edit/MultiEdit/NotebookEdit, else compact JSON of tool_input cut to 500 chars;
-  one question "允许吗？" with options 允许 / 拒绝, allowText false. 允许 → behavior allow; anything else → deny.
+  one question "Allow this?" with options Allow / Deny, allowText false. Allow → behavior allow; anything else → deny.
 - `Notification`: `notification_type == "permission_prompt"` → nil (the PermissionRequest covers it);
   otherwise notify, title = `message`, source as above.
 - Anything else → nil.
@@ -67,7 +67,7 @@ ask-island hook      # Claude Code hook: stdin JSON → stdout JSON (ClaudeHook)
 ```
 - `ask` title defaults to the question; prints `AskAnswer.display`. `do` prints the note if any.
 - Exit: 0 answered/done/notified, 3 declined (note on stderr), 4 timeout, 5 dismissed, 2 app not running
-  (stderr `AskIsland 没在运行`), 64 usage error. `--json` prints the AskResponse JSON instead.
+  (stderr `AskIsland is not running`), 64 usage error. `--json` prints the AskResponse JSON instead.
 - source: cwd = current dir; agent = --agent, else env `ASK_ISLAND_AGENT`, else "claude" if `CLAUDECODE=1`,
   "codex" if any `CODEX_` env var, else "cli".
 - `hook`: app not running or the event maps to nil → print nothing, exit 0 (Claude falls back to its own UI).
@@ -76,12 +76,10 @@ ask-island hook      # Claude Code hook: stdin JSON → stdout JSON (ClaudeHook)
 ## App (Sources/AskIsland)
 
 Agent app (`NSApp.setActivationPolicy(.accessory)`, no Dock icon). At launch: one `AskStore`, one `AskServer`
-started on it, the island window, a status item. Reuse, by copying into this target (the old app is not a
-dependency): notch geometry from `../Sources/CodeIsland/ScreenDetector.swift`; `NotchPanelShape`,
-`IslandBackground` and `ClearLensGlass` (NSGlassEffectView, private `_variant` 11, black fade in its contentView)
-from `../Sources/CodeIsland/NotchPanelView.swift`; the panel setup in `showPanel()` of
-`../Sources/CodeIsland/PanelWindowController.swift` (borderless nonactivating `KeyablePanel`, level mainMenu+2,
-clear background, all spaces + full-screen auxiliary). Screen: the one with a notch, else the main screen.
+started on it, the island window, a status item. Notch geometry (`ScreenDetector`), `NotchPanelShape`,
+`IslandBackground`, `ClearLensGlass` and the borderless nonactivating `KeyablePanel` (level mainMenu+2, clear
+background, all spaces + full-screen auxiliary) came from upstream CodeIsland and now live in this target only.
+Screen: the one with a notch, else the main screen.
 
 **States**
 - Nothing pending: nothing visible; the window ignores mouse events so the menu bar works underneath.
@@ -95,23 +93,23 @@ clear background, all spaces + full-screen auxiliary). Screen: the one with a no
 
 **Question card**: title (bold), detail (secondary, selectable), then per question: header chip, question text,
 option rows (label, small description). Single-select = radio (picking replaces), multi = checkboxes. A text field
-when `allowText` (placeholder "其他（可选）", or "输入回答" when there are no options). "提交" is enabled when
+when `allowText` (placeholder "Other (optional)", or "Type your answer" when there are no options). "Submit" is enabled when
 every question has a selection or non-empty text → `.answered` with one AskAnswer per question (selected labels
-in option order, trimmed text or nil). "拒绝回答" → `.declined`. Keys when no text field has focus: 1–9 toggle
+in option order, trimmed text or nil). "Decline" → `.declined`. Keys when no text field has focus: 1–9 toggle
 options of the first question still unanswered, Return submits, Esc collapses.
 
 **Action card**: SF Symbol per actionKind (computer `desktopcomputer`, phone `iphone`, password `key.fill`,
-login `person.badge.key`, other/nil `hand.raised`), title, detail (steps, selectable), note field "备注（可选）",
-primary "我已完成" → `.done` with note, secondary "做不了" → `.declined` with note. Password kind adds the line
-"密码请在它提示的地方输入，不要发给 agent". No password field anywhere in the app.
+login `person.badge.key`, other/nil `hand.raised`), title, detail (steps, selectable), note field "Note (optional)",
+primary "Done" → `.done` with note, secondary "Can't do it" → `.declined` with note. Password kind adds the line
+"Type the password where it asks for it. Never send it to the agent.". No password field anywhere in the app.
 
-**Notify card**: title, detail, "知道了" → `.dismissed`. (Store drops it after 15 s anyway.)
+**Notify card**: title, detail, "Got it" → `.dismissed`. (Store drops it after 15 s anyway.)
 
 **Focus**: text fields must take typing including Chinese IME: clicking makes the panel key and focusing a
 text field activates the app. After a resolve leaves nothing pending, reactivate the app that was frontmost
 before.
 
-**Status item** (`bubble.left.and.exclamationmark.bubble.right`): "测试：提问", "测试：让我操作", "退出".
+**Status item** (`bubble.left.and.exclamationmark.bubble.right`): "Test: Ask a Question", "Test: Request an Action", "Quit".
 The test items submit sample requests straight into the store. If the server failed to start, the item shows a
 warning symbol and the menu says why.
 
@@ -139,3 +137,36 @@ The island grows out of the notch and shrinks back into it; the window never res
   Expanding uses open, collapsing/hiding uses close.
 - First arrival: hidden → expanded (grows from the notch). Resolving the last request: expanded → hidden,
   then `ignoresMouseEvents = true` after the close animation ends.
+
+## Visual style (reference: a Liquid Glass "New Message" compose sheet)
+
+The whole island reads as one thick slab of clear glass hanging from the notch, styled like a macOS 26
+compose sheet. All UI text is English.
+
+**Slab**
+- `ClearLensGlass` (`_variant` 11) with corner radius 56 for the bottom corners: on this glass the refracting
+  rim is as wide as the corner radius, so a large radius is what gives the thick lensing border on the left,
+  right and bottom edges. The top stays pushed above the window so only the bottom corners round.
+- Tint inside the glass, top to bottom: solid black through the notch band, then fading to a dim smoke that
+  never goes fully clear: black alpha `[1, 1, 0.75, 0.5, 0.4, 0.35]` at `[0, 0.2, 0.35, 0.55, 0.8, 1]`. Text
+  sits on the smoke; keep the tight dark text shadow.
+- Content is inset 28 pt from the left/right edges and 24 pt from the bottom so nothing sits on the rim.
+
+**Layout, like the compose sheet**
+- Title bar row under the notch: agent name 15 pt semibold white on the left (the sheet's "New Message"),
+  folder and "1/3" after it in secondary white (0.55); on the right a collapse button drawn as a small
+  circular glass-like control (24 pt circle, white 0.12 fill, `chevron.up` 11 pt).
+- Below it the request title as a large heading: 20 pt semibold white, then the detail in 13 pt white 0.7.
+- Field rows, separated by hairlines (1 px white 0.14, full content width), each row 40–44 pt tall:
+  - question header / question text, when shown, is a row label in white 0.55 (like "To" / "Subject").
+  - option rows: label 14 pt white, description 12 pt white 0.55 under it; the selection mark sits at the
+    right end: `checkmark.circle.fill` in systemBlue when selected, `circle` white 0.35 when not (multi-select
+    uses `checkmark.square.fill` / `square`). Hover gives the row a white 0.06 fill.
+  - text field row: placeholder in white 0.4, no box, just the row with its hairline.
+  - action card: the SF Symbol for the action kind 18 pt next to the title; detail in a body block; the note
+    field as a row; the password warning as a row with `lock.fill`, systemOrange text.
+- Bottom toolbar row (after a hairline): primary action on the left as a filled capsule in systemBlue,
+  white 14 pt semibold text, 32 pt tall, 18 pt horizontal padding, `paperplane.fill` icon before "Submit"
+  (question) / `checkmark` before "Done" (action) / no icon for "Got it" (notify). Secondary action on the
+  right as plain text white 0.6 ("Decline", "Can't do it"). Disabled primary: systemBlue at 0.35.
+- Collapsed pill stays solid black (it merges with the notch).
