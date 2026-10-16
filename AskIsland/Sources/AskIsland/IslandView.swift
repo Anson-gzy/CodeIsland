@@ -58,6 +58,10 @@ final class ThickGlassView: NSGlassEffectView {
     static let outerRefractionHeight = 36.0
     static let outerRefractionAmount = 22.0
 
+    /// 0...1, scales the refraction bands. They are fixed in points, so on a shrinking panel they would cover
+    /// the whole slab and smear everything behind it; the morph fades them out with the glass.
+    var strength: Double = 1
+
     override func layout() {
         super.layout()
         retune()
@@ -65,6 +69,14 @@ final class ThickGlassView: NSGlassEffectView {
 
     private func retune() {
         if let layer { tune(layer) }
+    }
+
+    /// A shape change (corner radius, size) rebuilds the backdrop filters after layout, on the way to the
+    /// next commit, so a layout-time retune alone misses it and the stock heavy blur shows for the whole
+    /// morph. Retune now and again right after the current transaction has been committed.
+    func retuneAfterShapeChange() {
+        retune()
+        DispatchQueue.main.async { [weak self] in self?.retune() }
     }
 
     /// Focusing a text field makes the panel key and the app active; the glass then rebuilds its filters
@@ -118,10 +130,10 @@ final class ThickGlassView: NSGlassEffectView {
             let k = "filters.glassBackground."
             layer.setValue(Self.blurRadius, forKeyPath: k + "inputBlurRadius")
             for i in 0..<4 { layer.setValue(1.0, forKeyPath: k + "inputBlurOpacity\(i)") }
-            layer.setValue(Self.refractionHeight, forKeyPath: k + "inputInnerRefractionHeight")
-            layer.setValue(Self.refractionAmount, forKeyPath: k + "inputInnerRefractionAmount")
-            layer.setValue(Self.outerRefractionHeight, forKeyPath: k + "inputOuterRefractionHeight")
-            layer.setValue(Self.outerRefractionAmount, forKeyPath: k + "inputOuterRefractionAmount")
+            layer.setValue(Self.refractionHeight * strength, forKeyPath: k + "inputInnerRefractionHeight")
+            layer.setValue(Self.refractionAmount * strength, forKeyPath: k + "inputInnerRefractionAmount")
+            layer.setValue(Self.outerRefractionHeight * strength, forKeyPath: k + "inputOuterRefractionHeight")
+            layer.setValue(Self.outerRefractionAmount * strength, forKeyPath: k + "inputOuterRefractionAmount")
         }
         layer.sublayers?.forEach { tune($0) }
     }
@@ -136,6 +148,8 @@ struct ClearLensGlass: NSViewRepresentable {
     var height: CGFloat
     /// Glass hidden above the screen edge (the pushed-up top corners); the tint is laid out on the rest.
     var topInset: CGFloat = 0
+    /// Refraction strength, see `ThickGlassView.strength`.
+    var strength: Double = 1
 
     final class TintView: NSView {
         let black = CAGradientLayer()
@@ -182,6 +196,7 @@ struct ClearLensGlass: NSViewRepresentable {
 
     private func apply(to glass: NSGlassEffectView) {
         glass.cornerRadius = cornerRadius
+        (glass as? ThickGlassView)?.strength = strength
         guard let tint = glass.contentView as? TintView else { return }
         let h = max(height, 1)
         let total = h + topInset
@@ -224,6 +239,7 @@ struct ClearLensGlass: NSViewRepresentable {
         CATransaction.commit()
         tint.needsLayout = true
         glass.needsLayout = true
+        (glass as? ThickGlassView)?.retuneAfterShapeChange()
     }
 }
 
@@ -268,10 +284,11 @@ struct IslandSurface: View, Animatable {
         ZStack(alignment: .top) {
             if #available(macOS 26.0, *), g > 0.001 {
                 // Top corners pushed above the screen edge: only the bottom corners (and their rim) show.
-                ClearLensGlass(cornerRadius: radius, height: height, topInset: radius * 2)
+                ClearLensGlass(cornerRadius: radius, height: height, topInset: radius * 2, strength: Double(gb))
                     .frame(width: width, height: height + radius * 2)
                     .offset(y: -radius * 2)
-                    .opacity(g)
+                    // No .opacity(g): any alpha below 1 on the backdrop drops the retuned filter for a frame or
+                    // two and the system's heavy blur flashes through. The black curtain covers it instead.
             }
             NotchShape(bottomRadius: radius, shoulder: shoulder)
                 .fill(.black)

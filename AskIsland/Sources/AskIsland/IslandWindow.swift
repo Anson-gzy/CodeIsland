@@ -217,9 +217,6 @@ final class IslandWindowController: ObservableObject {
         let currentIds = Set(pending.map(\.id))
 
         if !newRequests.isEmpty {
-            // Play Glass sound once on arrival
-            NSSound(named: NSSound.Name("Glass"))?.play()
-
             if knownRequestIds.isEmpty {
                 // Expanding for the first arrival
                 withAnimation(NotchAnimation.open) {

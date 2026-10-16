@@ -89,7 +89,7 @@ Screen: the one with a notch, else the main screen.
   "1/3" when more than one, and a chevron that collapses.
 - Pending, collapsed: a black pill the notch's width plus small wings, showing an orange count badge; click
   expands. A new arrival while collapsed keeps it collapsed and pulses the badge once.
-- Each new arrival plays `NSSound(named: "Glass")` once. Arrival never steals focus.
+- Arrival is silent (no sound) and never steals focus.
 
 **Question card**: title (bold), detail (secondary, selectable), then per question: header chip, question text,
 option rows (label, small description). Single-select = radio (picking replaces), multi = checkboxes. A text field
@@ -169,7 +169,11 @@ title, detail, questions and options are the agent's words, shown verbatim in wh
 - `IslandSurface` is resized, not scaled: `Animatable` over width, height and `glass` (0 = black pill, 1 =
   glass), so every spring frame re-lays out the shape and the corners and lens edge stay true. The black
   curtain follows `glass`³: on the way down it closes over the glass early, so the shrinking slab reads as the
-  dark notch rather than a grey block; on the way up the glass opens near full size.
+  dark notch rather than a grey block; on the way up the glass opens near full size. The refraction bands are
+  fixed in points, so they scale with `glass`³ too (otherwise they cover a shrinking slab and smear it), and the
+  glass is never faded with opacity (alpha below 1 on the backdrop flashes the stock heavy blur).
+- The glass rebuilds its backdrop filters after a shape change, after layout: `ThickGlassView` retunes on
+  layout and once more right after the transaction commits, or the morph runs on the stock filter.
 - Content is clipped by `IslandClipShape`, animated with the same spring, so it never spills outside the
   shape while it grows or shrinks.
 - Open: `spring(response 0.5, damping 0.78)`; close: `spring(0.52, 0.9)`. Content comes in with blur 10 + fade
