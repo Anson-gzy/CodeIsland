@@ -168,7 +168,7 @@ title, detail, questions and options are the agent's words, shown verbatim in wh
 
 **Collapsed**
 - No glass: a plain black `NotchShape` that extends the notch down by 22 pt; in that strip, like a live
-  activity: an orange SF Symbol for what is waiting (question `questionmark.bubble.fill`, notify `bell.fill`,
+  activity: a blue SF Symbol (`systemBlue`, the Submit button's blue) for what is waiting (question `questionmark.bubble.fill`, notify `bell.fill`,
   action by kind: `desktopcomputer`, `iphone`, `lock.fill`, `person.badge.key.fill`, else `hand.raised.fill`),
   the first request's own title (12 pt medium, white 0.85, one line, tail-truncated), then "+N" in a small
   white 0.14 capsule when more are waiting.

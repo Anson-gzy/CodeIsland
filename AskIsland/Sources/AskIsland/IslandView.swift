@@ -597,7 +597,7 @@ struct CollapsedIslandView: View {
         HStack(spacing: 7) {
             Image(systemName: Self.symbol(for: request))
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color.orange)
+                .foregroundStyle(Color(nsColor: .systemBlue))  // the Submit button's blue
                 .scaleEffect(pulseScale)
             Text(request?.title ?? "Needs you")
                 .font(.system(size: 12, weight: .medium))
