@@ -135,7 +135,7 @@ The island grows out of the notch and shrinks back into it; the window never res
 - Card content and the collapsed badge use upstream's transition: blur 5 + opacity, combined with
   `.scale(0.96, anchor: .top)`; switching from one request to the next uses the same transition.
 - Curves (copy upstream `NotchAnimation`): open = spring(response 0.42, damping 0.82); close =
-  spring(response 0.35, damping 1.0) (critically damped so the shape never overshoots above the notch).
+  spring(response 0.38, damping 1.0) (critically damped so the shape never overshoots above the notch).
   Expanding uses open, collapsing/hiding uses close.
 - First arrival: hidden → expanded (grows from the notch). Resolving the last request: expanded → hidden,
   then `ignoresMouseEvents = true` after the close animation ends.
