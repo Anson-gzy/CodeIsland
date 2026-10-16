@@ -154,7 +154,7 @@ title, detail, questions and options are the agent's words, shown verbatim in wh
   view skips `_windowChangedKeyState` and holds its values every frame for 0.5 s after a context change
   (otherwise a click anywhere flashed clearer glass, then blur):
   `inputBlurRadius` 3 (blur opacities 1), face color matrix on (`inputFaceOpacity` 1,
-  `inputFaceColorMatrixWhite` 0.55: the backdrop is capped at mid grey, like Voice Pill's glass, so white text
+  `inputFaceColorMatrixWhite` 0.68: the backdrop is capped at mid grey, like Voice Pill's glass, so white text
   stays legible over a white window), inner refraction height 86 / amount -110, outer refraction height 36 /
   amount 22 (variant 11 ships blur 0, inner 20 / -50, outer 16 / 10). The white specular rim (layer `@3`) stays
   as the thin bright line along the bottom; thinned through its private `CASDFKeyFillHighlightEffect`:

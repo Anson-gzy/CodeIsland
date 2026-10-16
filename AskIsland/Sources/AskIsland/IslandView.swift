@@ -58,7 +58,7 @@ final class ThickGlassView: NSGlassEffectView {
     static let outerRefractionHeight = 36.0
     static let outerRefractionAmount = 22.0
     /// Brightest the backdrop may show through (0...1): mid grey, like Voice Pill's glass.
-    static let faceWhite = 0.55
+    static let faceWhite = 0.68
 
     /// 0...1, scales the refraction bands. They are fixed in points, so on a shrinking panel they would cover
     /// the whole slab and smear everything behind it; the morph fades them out with the glass.
