@@ -87,8 +87,8 @@ Screen: the one with a notch, else the main screen.
   card up to 70% of the screen (card scrolls beyond), expanded glass background like CodeIsland. Shows the oldest
   pending request. Header: agent name (`source.agent`, else "Agent") · last path component of `source.cwd` ·
   "1/3" when more than one, and a chevron that collapses.
-- Pending, collapsed: a black pill the notch's width plus small wings, showing an orange count badge; click
-  expands. A new arrival while collapsed keeps it collapsed and pulses the badge once.
+- Pending, collapsed: a black pill the notch's width plus 32 pt wings on each side, showing the first request
+  in one line; click expands. A new arrival while collapsed keeps it collapsed and pulses the glyph once.
 - Arrival is silent (no sound) and never steals focus.
 
 **Question card**: title (bold), detail (secondary, selectable), then per question: header chip, question text,
@@ -167,8 +167,13 @@ title, detail, questions and options are the agent's words, shown verbatim in wh
 - Text (not buttons or fields) gets a soft dark halo (`textHalo`: black 0.45, radius 2.5) for legibility.
 
 **Collapsed**
-- No glass: a plain black `NotchShape` that extends the notch down by 22 pt, badge + "Needs you" in that strip.
-- Hover: the pill swells by 20 pt wide / 4 pt tall on a `spring(0.3, 0.65)` and its label brightens.
+- No glass: a plain black `NotchShape` that extends the notch down by 22 pt; in that strip, like a live
+  activity: an orange SF Symbol for what is waiting (question `questionmark.bubble.fill`, notify `bell.fill`,
+  action by kind: `desktopcomputer`, `iphone`, `lock.fill`, `person.badge.key.fill`, else `hand.raised.fill`),
+  the first request's own title (12 pt medium, white 0.85, one line, tail-truncated), then "+N" in a small
+  white 0.14 capsule when more are waiting.
+- Hover: the pill swells by 20 pt wide / 4 pt tall on a `spring(0.3, 0.65)`, the title brightens to white and
+  a small `chevron.down` slides in at the end.
 
 **Motion (reference: the iOS notch-to-Spotlight video)**
 - `IslandSurface` is resized, not scaled: `Animatable` over width, height and `glass` (0 = black pill, 1 =

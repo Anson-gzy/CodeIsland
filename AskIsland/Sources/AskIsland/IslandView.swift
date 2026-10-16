@@ -462,7 +462,7 @@ struct IslandRootView: View {
         return min(max(h, notchHeight + 60), maxPanelHeight)
     }
 
-    private var collapsedWidth: CGFloat { notchWidth + 24 }
+    private var collapsedWidth: CGFloat { notchWidth + 64 }
     private var collapsedHeight: CGFloat { notchHeight + CollapsedIslandView.stripHeight }
 
     /// Size of the one surface in each state; the springs in `body` morph between them.
@@ -502,6 +502,7 @@ struct IslandRootView: View {
                 if currentState == .collapsed {
                     CollapsedIslandView(
                         count: store.pending.count,
+                        request: store.pending.first,
                         pulseTrigger: pulseTrigger,
                         hovered: pillHovered,
                         onExpand: {
@@ -564,35 +565,64 @@ struct IslandRootView: View {
 
 struct CollapsedIslandView: View {
     let count: Int
+    var request: AskRequest?
     let pulseTrigger: Int
     var hovered = false
     let onExpand: () -> Void
 
     @State private var pulseScale: CGFloat = 1.0
 
-    /// The hardware notch hides everything drawn at its height, so the badge sits in a strip below it.
+    /// The hardware notch hides everything drawn at its height, so the content sits in a strip below it.
     static let stripHeight: CGFloat = 22
 
-    var body: some View {
-        HStack(spacing: 6) {
-            Spacer()
-            Text("\(count)")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(.white)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 2)
-                .background(
-                    Capsule()
-                        .fill(Color.orange)
-                )
-                .scaleEffect(pulseScale)
-            Text("Needs you")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white.opacity(hovered ? 1 : 0.8))
-            Spacer()
+    /// What is waiting, in one glyph: the request kind, or for an action what it asks the hands to do.
+    static func symbol(for request: AskRequest?) -> String {
+        guard let request else { return "questionmark.bubble.fill" }
+        switch request.kind {
+        case .question: return "questionmark.bubble.fill"
+        case .notify: return "bell.fill"
+        case .action:
+            switch request.actionKind {
+            case .computer: return "desktopcomputer"
+            case .phone: return "iphone"
+            case .password: return "lock.fill"
+            case .login: return "person.badge.key.fill"
+            default: return "hand.raised.fill"
+            }
         }
+    }
+
+    var body: some View {
+        // A live-activity strip: what it is (glyph), what it says (the request's own title), how many more.
+        HStack(spacing: 7) {
+            Image(systemName: Self.symbol(for: request))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.orange)
+                .scaleEffect(pulseScale)
+            Text(request?.title ?? "Needs you")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(hovered ? 1 : 0.85))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if count > 1 {
+                Text("+\(count - 1)")
+                    .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.7))
+                    .padding(.horizontal, 5)
+                    .frame(height: 15)
+                    .background(Capsule().fill(Color.white.opacity(0.14)))
+            }
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white.opacity(0.6))
+                .opacity(hovered ? 1 : 0)
+                .frame(width: hovered ? 10 : 0)
+        }
+        .padding(.horizontal, 14)
         .frame(height: Self.stripHeight)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .padding(.bottom, 3)
         .contentShape(Rectangle())
         .onTapGesture {
             onExpand()
