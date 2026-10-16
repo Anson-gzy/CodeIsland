@@ -8,7 +8,6 @@ func usage() -> Never {
       ask-island do "<title>" [--detail D] [--kind computer|phone|password|login|other] [--timeout S] [--agent A] [--json]
       ask-island notify "<title>" [--detail D] [--agent A]
       ask-island hook
-      ask-island mcp
     """
     fputs(text + "\n", stderr)
     exit(64)
@@ -227,14 +226,6 @@ case "hook":
     } catch {
         // Claude falls back to its own UI
     }
-    exit(0)
-
-case "mcp":
-    let client = AskClient()
-    let server = MCPServer { req in
-        try await client.ask(req)
-    }
-    await server.run()
     exit(0)
 
 default:
