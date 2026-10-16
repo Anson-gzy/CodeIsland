@@ -2,7 +2,7 @@
 
 A notch island whose only job: when an agent needs the person (pick options, answer, do something on the
 Mac / phone, type a password somewhere, log in), it shows up at the notch, says what to do, and the person
-answers there. Agents reach it through an MCP server, a CLI, or Claude Code hooks. Shared types are in
+answers there. Agents reach it through the `ask-island` CLI (one line in AGENTS.md); Claude Code's own AskUserQuestion reaches it through a hook. Shared types are in
 `Sources/AskIslandCore/Models.swift` (AskRequest / AskResponse / AskEndpoint): use them, don't redefine.
 
 ## Core (Sources/AskIslandCore)
@@ -56,20 +56,6 @@ dead, or the connection is refused. No request timeout of its own (a question ma
   otherwise notify, title = `message`, source as above.
 - Anything else → nil.
 
-**MCPServer** (pure handler, injectable `ask: (AskRequest) async throws -> AskResponse`): JSON-RPC 2.0,
-newline-delimited on stdio. `initialize` (echo the client's protocolVersion, else "2025-06-18"; capabilities
-`{"tools":{}}`; serverInfo `ask-island` 0.1.0), `notifications/*` no reply, `ping`, `tools/list`, `tools/call`;
-unknown method → error -32601. Calls run concurrently (a waiting question must not block `ping`); stdout writes
-are serialized. Tools (descriptions in Chinese, they are how agents learn when to use it):
-- `ask_user` {question*, options: [string | {label, description}], multi_select, allow_text (default true),
-  title, detail, timeout_seconds}: "需要用户做选择或回答问题时用（比在对话里问更显眼，用户不在终端前也能看到）".
-  Result text: `用户回答：<display>`; declined `用户拒绝回答：<note>`; timeout `用户没有在 <n> 秒内回答`.
-- `request_user_action` {title*, detail* (要用户做什么，写成步骤), kind: computer|phone|password|login|other,
-  timeout_seconds}: "需要用户亲手操作电脑/手机、输入密码、登录、插线、点确认时用；会等到用户勾选已完成。不要让用户把
-  密码告诉你". Result `用户已完成` (+ `，备注：<note>`) / `用户说做不了：<note>` / timeout text.
-- `notify_user` {title*, detail}: "只通知、不需要回答时用（任务完成、需要用户回来看一眼）". Result `已通知`.
-- App not running → `isError: true`, text `AskIsland 没在运行，请直接在对话里问用户`.
-
 ## CLI (Sources/ask-island/main.swift)
 
 ```
@@ -78,7 +64,6 @@ ask-island ask "<question>" [-o "<label>[::<description>]"]... [--multi] [--no-t
 ask-island do "<title>" [--detail D] [--kind computer|phone|password|login|other] [--timeout S] [--agent A] [--json]
 ask-island notify "<title>" [--detail D] [--agent A]
 ask-island hook      # Claude Code hook: stdin JSON → stdout JSON (ClaudeHook)
-ask-island mcp       # stdio MCP server (MCPServer)
 ```
 - `ask` title defaults to the question; prints `AskAnswer.display`. `do` prints the note if any.
 - Exit: 0 answered/done/notified, 3 declined (note on stderr), 4 timeout, 5 dismissed, 2 app not running
