@@ -47,7 +47,7 @@ extension AnyTransition {
 
 /// Variant-11 glass retuned to read as a thick, slightly frosted slab: the backdrop's private
 /// `glassBackground` filter gets a light blur and deeper refraction bands, and the white specular rim
-/// (layer "@3") is hidden. Values are re-applied on every layout because the glass rebuilds its layers
+/// (layer "@3") is kept on the top and sides but masked out along the bottom. Values are re-applied on every layout because the glass rebuilds its layers
 /// and filters when its shape changes (macOS 27.2).
 @available(macOS 26.0, *)
 final class ThickGlassView: NSGlassEffectView {
@@ -62,8 +62,30 @@ final class ThickGlassView: NSGlassEffectView {
         if let layer { tune(layer) }
     }
 
+    /// Keeps the white specular rim (layer "@3") on the top and sides but fades it out before the bottom
+    /// corners, so the bottom edge has refraction without a bright line.
+    private func maskBottom(ofRim rim: CALayer) {
+        let h = max(rim.bounds.height, 1)
+        let r = min(cornerRadius, h / 2)
+        let mask = (rim.mask as? CAGradientLayer) ?? CAGradientLayer()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        mask.frame = rim.bounds
+        mask.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor, NSColor.clear.cgColor]
+        let fadeStart = max(0, (h - r * 1.1) / h)
+        let fadeEnd = max(fadeStart, (h - r * 0.45) / h)
+        mask.locations = [0, NSNumber(value: fadeStart), NSNumber(value: fadeEnd), 1]
+        // The glass's layer tree is top-down (y = 0 at the top edge) on macOS 27.2: measured, not inferred
+        // from isGeometryFlipped, which reports false here.
+        mask.startPoint = CGPoint(x: 0.5, y: 0)
+        mask.endPoint = CGPoint(x: 0.5, y: 1)
+        rim.mask = mask
+        rim.isHidden = false
+        CATransaction.commit()
+    }
+
     private func tune(_ layer: CALayer) {
-        if layer.name == "@3" { layer.isHidden = true }  // the white specular rim along the bottom edge
+        if layer.name == "@3" { maskBottom(ofRim: layer) }
         if String(describing: type(of: layer)) == "CABackdropLayer",
            layer.filters?.contains(where: { ($0 as AnyObject).value(forKey: "name") as? String == "glassBackground" }) == true {
             let k = "filters.glassBackground."
