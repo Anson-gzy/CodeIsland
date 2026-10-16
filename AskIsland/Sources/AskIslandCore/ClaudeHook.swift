@@ -53,9 +53,11 @@ public enum ClaudeHook {
                     }
                 }
 
+                // The model's own words lead the card, in whatever language it writes to the user.
+                let title = questions.count == 1 ? questions[0].question : "Claude has \(questions.count) questions"
                 let req = AskRequest(
                     kind: .question,
-                    title: "Claude has a question",
+                    title: title,
                     questions: questions,
                     source: source
                 )

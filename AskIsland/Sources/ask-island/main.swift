@@ -8,6 +8,9 @@ func usage() -> Never {
       ask-island do "<title>" [--detail D] [--kind computer|phone|password|login|other] [--timeout S] [--agent A] [--json]
       ask-island notify "<title>" [--detail D] [--agent A]
       ask-island hook
+
+    Titles, details and options are shown verbatim: write them in the language you use with the user.
+    Only the island's own chrome (buttons, hints) is English.
     """
     fputs(text + "\n", stderr)
     exit(64)

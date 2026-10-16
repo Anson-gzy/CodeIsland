@@ -407,6 +407,18 @@ final class CoreTests: XCTestCase {
 
     // MARK: - A6: ClaudeHook Coverage
 
+    func testClaudeHookSingleQuestionUsesModelWordsAsTitle() throws {
+        let inputJSON = """
+        {
+          "hook_event_name": "PermissionRequest",
+          "tool_name": "AskUserQuestion",
+          "tool_input": {"questions": [{"question": "部署到哪个环境？", "options": [{"label": "预发"}, {"label": "生产"}]}]}
+        }
+        """
+        let parsed = try XCTUnwrap(ClaudeHook.parseRequest(from: inputJSON))
+        XCTAssertEqual(parsed.request.title, "部署到哪个环境？")
+    }
+
     func testClaudeHookAskUserQuestionTwoQuestionsKeepsQuestionsAndKeysAnswers() throws {
         let inputJSON = """
         {
@@ -435,7 +447,7 @@ final class CoreTests: XCTestCase {
         }
 
         XCTAssertEqual(parsed.request.kind, .question)
-        XCTAssertEqual(parsed.request.title, "Claude has a question")
+        XCTAssertEqual(parsed.request.title, "Claude has 2 questions")
         XCTAssertEqual(parsed.request.questions.count, 2)
         XCTAssertFalse(parsed.request.questions[0].multiSelect)
         XCTAssertTrue(parsed.request.questions[1].multiSelect)

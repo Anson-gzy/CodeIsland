@@ -120,45 +120,58 @@ then a phone action, then a notify, so screenshots show every card.
 
 The island grows out of the notch and shrinks back into it; the window never resizes to animate.
 - The panel window has a fixed frame: centered under the notch, width 560, height 70% of the screen, top
-  edge at the screen top. Fully transparent pixels of the non-opaque borderless panel let clicks through (that
-  is how upstream does it; no hit-test override needed). `ignoresMouseEvents` stays true while nothing is
-  pending.
-- One island glass (`IslandGlass`), top-anchored and horizontally centered, morphs between three sizes:
-  hidden = notchWidth × notchHeight (faded out); collapsed = notchWidth + 90 × notchHeight + 26 (dark pill,
-  badge below the notch); expanded = 480 × measured content height (clamped to the window). Curves and
-  content transitions: see "Motion" under Visual style.
-- First arrival: hidden → expanded (grows from the notch). Resolving the last request: expanded → hidden,
-  then `ignoresMouseEvents = true` after the close animation ends.
+  edge at the screen top. It only takes mouse events while the pointer is over the island: the root view
+  reports the island's size (`hitSize`, surface + shoulders) and a 30 Hz pointer poll, running only while
+  something is pending, flips `ignoresMouseEvents` (transparent pixels of the panel do NOT pass clicks through
+  on their own). `ignoresMouseEvents` stays true while nothing is pending.
+- One surface (`IslandSurface`), top-anchored and horizontally centered, morphs between three sizes:
+  hidden = notchWidth × notchHeight (faded out); collapsed = notchWidth + 24 × notchHeight + 22 (plain black
+  notch extension, badge below the notch); expanded = 480 × measured content height (clamped to the window).
+  Curves and content transitions: see "Motion" under Visual style.
+- First arrival: hidden → expanded (grows from the notch). Resolving the last request: expanded → hidden.
 
 ## Visual style (reference: a Liquid Glass "New Message" compose sheet)
 
-The whole island is one capsule of clear lens glass hanging from the notch (iOS Spotlight / "Search or Ask"
-look), styled like a macOS 26 compose sheet. All UI text is English.
+The expanded island is one slab of clear lens glass hanging from the notch (iOS Spotlight / "Search or Ask"
+look), styled like a macOS 26 compose sheet. The island's own chrome (buttons, placeholders) is English; the
+title, detail, questions and options are the agent's words, shown verbatim in whatever language it writes.
 
-**Capsule**
-- `ClearLensGlass` (`_variant` 11), all four corners round, top edge on the screen's top edge, corner radius
-  `min(64, height/2)`: on this glass the refracting rim is as wide as the corner radius, so a large radius is
-  what gives the thick lensing border on the sides and bottom.
-- Thick, slightly frosted slab: `ThickGlassView` retunes the backdrop's private `glassBackground` filter on
-  every layout: `inputBlurRadius` 3 (blur opacities 1), inner refraction height 86 / amount -110, outer refraction
-  height 36 / amount 22 (variant 11 ships blur 0, inner 20 / -50, outer 16 / 10). The white specular rim (layer `@3`) stays, as the
-  thin bright line along the bottom edge of the reference. The rim is thinned through its private
-  `CASDFKeyFillHighlightEffect`: `keyHeight` / `fillHeight` 1.5 (default 3.5), `diffuseHeightScale` 4 (default 8).
-- Tint inside the glass, as fractions of the capsule height (measured from the reference video): solid black
-  over the top 47% (or down to notch height + 40, whichever is lower), then a soft fade (half linear, half
-  smoothstep, 14 stops) ending at ~90%: black alpha 1 → 0. A milky white haze is its own gradient from where the fade starts to the
-  bottom edge, easing in (t^1.2) up to 0.3, so the bottom reads as white frosted glass, not just clear blur. The
-  fade only opens up as the capsule grows (`reveal` = (height − 180) / 220, clamped), so the pill and the
-  mid-morph frames stay dark like the reference. Text keeps its tight dark shadow.
-- The same capsule is the collapsed pill (notch width + 90 by notch height + 26): at that size it is black
-  all the way down.
+**Shape**
+- Flat top on the screen's top edge that flares out into the menu bar through concave shoulders (like the
+  hardware notch), straight sides, round bottom corners. `NotchShape` draws it; shoulder 14 pt expanded, 4 pt
+  collapsed. Bottom radius 40 expanded, 12 collapsed, interpolated by the morph and clamped to height / 2.
+- No highlight along the top: the glass's top corners are pushed above the screen edge (glass frame = height +
+  2r, offset −2r), and a black `NotchShape` covers the band under the notch (solid to notch height, fading out
+  by 2× notch height), so only the flared shoulders and the bottom corners show.
+
+**Glass (expanded)**
+- `ClearLensGlass` (`_variant` 11) inside `IslandSurface`. Thick, slightly frosted slab: `ThickGlassView` retunes
+  the backdrop's private `glassBackground` filter on every layout and again on key-window / app-activation
+  changes (focusing a text field used to make the glass rebuild its filters and the blur jumped):
+  `inputBlurRadius` 3 (blur opacities 1), inner refraction height 86 / amount -110, outer refraction height 36 /
+  amount 22 (variant 11 ships blur 0, inner 20 / -50, outer 16 / 10). The white specular rim (layer `@3`) stays
+  as the thin bright line along the bottom; thinned through its private `CASDFKeyFillHighlightEffect`:
+  `keyHeight` / `fillHeight` 1.5 (default 3.5), `diffuseHeightScale` 4 (default 8).
+- Tint inside the glass, as fractions of the visible height (measured from the reference video, mapped past
+  the hidden top inset): solid black over the top 47% (or down to notch height + 40, whichever is lower), then
+  a soft fade (half linear, half smoothstep, 14 stops) ending at ~90%: black alpha 1 → 0. A milky white haze is
+  its own gradient from where the fade starts to the bottom edge, easing in (t^1.2) up to 0.3. The fade only
+  opens up as the slab grows (`reveal` = (height − 180) / 220, clamped), so mid-morph frames stay dark.
+- Text (not buttons or fields) gets a soft dark halo (`textHalo`: black 0.45, radius 2.5) for legibility.
+
+**Collapsed**
+- No glass: a plain black `NotchShape` that extends the notch down by 22 pt, badge + "Needs you" in that strip.
+- Hover: the pill swells by 20 pt wide / 4 pt tall on a `spring(0.3, 0.65)` and its label brightens.
 
 **Motion (reference: the iOS notch-to-Spotlight video)**
-- One `IslandGlass` view is resized, not scaled: it is `Animatable` over width and height, so every spring
-  frame re-lays out the glass and the corners and lens edge stay true. hidden = notch size (faded out),
-  collapsed = pill, expanded = 480 by content height.
-- Open: `spring(response 0.5, damping 0.78)`; close: `spring(0.4, 1.0)`. Content comes in with blur 10 + fade
-  + scale 0.92 from the top, 0.06 s after the glass starts; it leaves with a 0.16 s blur-out.
+- `IslandSurface` is resized, not scaled: `Animatable` over width, height and `glass` (0 = black pill, 1 =
+  glass), so every spring frame re-lays out the shape and the corners and lens edge stay true. The black
+  curtain follows `glass`³: on the way down it closes over the glass early, so the shrinking slab reads as the
+  dark notch rather than a grey block; on the way up the glass opens near full size.
+- Content is clipped by `IslandClipShape`, animated with the same spring, so it never spills outside the
+  shape while it grows or shrinks.
+- Open: `spring(response 0.5, damping 0.78)`; close: `spring(0.52, 0.9)`. Content comes in with blur 10 + fade
+  + scale 0.92 from the top, 0.06 s after the surface starts; it leaves with a 0.18 s blur-out + scale 0.94.
 - Content is inset 28 pt from the left/right edges and 24 pt from the bottom so nothing sits on the rim.
 
 **Layout, like the compose sheet**
@@ -166,16 +179,19 @@ look), styled like a macOS 26 compose sheet. All UI text is English.
   folder and "1/3" after it in secondary white (0.55); on the right a collapse button drawn as a small
   circular glass-like control (24 pt circle, white 0.12 fill, `chevron.up` 11 pt).
 - Below it the request title as a large heading: 20 pt semibold white, then the detail in 13 pt white 0.7.
-- Field rows, separated by hairlines (1 px white 0.14, full content width), each row 40–44 pt tall:
+- Rows (no hairlines between options; a hairline only between questions):
   - question header / question text, when shown, is a row label in white 0.55 (like "To" / "Subject").
   - option rows: label 14 pt white, description 12 pt white 0.55 under it; the selection mark sits at the
     right end: `checkmark.circle.fill` in systemBlue when selected, `circle` white 0.35 when not (multi-select
-    uses `checkmark.square.fill` / `square`). Hover gives the row a white 0.06 fill.
-  - text field row: placeholder in white 0.4, no box, just the row with its hairline.
+    uses `checkmark.square.fill` / `square`). Hover: a white 0.12 continuous-corner tile (radius 12) behind the
+    row, bleeding 10 pt past the text column, eased in over 0.12 s.
+  - text fields (question "Other", action note): a frosted box, white 0.1 fill + white 0.18 hairline border,
+    radius 12, 38 pt tall, same 10 pt bleed.
   - action card: the SF Symbol for the action kind 18 pt next to the title; detail in a body block; the note
-    field as a row; the password warning as a row with `lock.fill`, systemOrange text.
-- Bottom toolbar row (after a hairline): primary action on the left as a filled capsule in systemBlue,
-  white 14 pt semibold text, 32 pt tall, 18 pt horizontal padding, `paperplane.fill` icon before "Submit"
-  (question) / `checkmark` before "Done" (action) / no icon for "Got it" (notify). Secondary action on the
-  right as plain text white 0.6 ("Decline", "Can't do it"). Disabled primary: systemBlue at 0.35.
+    field; the password warning as a row with `lock.fill`, systemOrange text.
+- Bottom toolbar, right-aligned like the compose sheet's "Save draft" / "Send": secondary then primary, both
+  Liquid Glass capsules (`glassEffect(.regular.interactive())`, 36 pt tall, 14 pt semibold white): secondary
+  is clear glass ("Decline", "Can't do it"), primary is blue-tinted glass ("Submit", "Done", "Got it"; disabled:
+  tint 0.35, label 0.6). Not the system `.glass` button styles: those grey out whenever the non-activating
+  panel is not the key window.
 - Collapsed pill stays solid black (it merges with the notch).

@@ -97,6 +97,7 @@ struct OptionRowView: View {
                             .foregroundColor(.white.opacity(0.55))
                     }
                 }
+                .textHalo()
 
                 Spacer()
 
@@ -110,18 +111,20 @@ struct OptionRowView: View {
                         .foregroundColor(isSelected ? Color(nsColor: .systemBlue) : .white.opacity(0.35))
                 }
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, CardMetrics.rowInset)
             .padding(.vertical, 8)
             .frame(minHeight: 40)
-            .contentShape(Rectangle())
+            .contentShape(RoundedRectangle(cornerRadius: CardMetrics.rowRadius, style: .continuous))
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
+                // Hover: a soft frosted tile behind the whole row, bleeding slightly past the text column.
+                RoundedRectangle(cornerRadius: CardMetrics.rowRadius, style: .continuous)
+                    .fill(Color.white.opacity(isHovered ? 0.12 : 0))
             )
         }
         .buttonStyle(.plain)
+        .padding(.horizontal, -CardMetrics.rowInset)
         .onHover { hovering in
-            isHovered = hovering
+            withAnimation(.easeOut(duration: 0.12)) { isHovered = hovering }
         }
     }
 }
@@ -150,6 +153,7 @@ struct QuestionCardView: View {
                         .textSelection(.enabled)
                 }
             }
+            .textHalo()
 
             // Questions
             VStack(alignment: .leading, spacing: 12) {
@@ -163,47 +167,17 @@ struct QuestionCardView: View {
                 }
             }
 
-            // Bottom toolbar after a hairline
-            VStack(spacing: 0) {
-                Rectangle()
-                    .fill(Color.white.opacity(0.14))
-                    .frame(height: 1)
-
-                HStack {
-                    // Primary action on the left: Submit
-                    Button(action: {
-                        cardState.submit(for: request, store: store)
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "paperplane.fill")
-                                .font(.system(size: 12, weight: .semibold))
-                            Text("Submit")
-                                .font(.system(size: 14, weight: .semibold))
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 18)
-                        .frame(height: 32)
-                        .background(
-                            Capsule()
-                                .fill(Color(nsColor: .systemBlue).opacity(cardState.isSubmitEnabled(for: request) ? 1.0 : 0.35))
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!cardState.isSubmitEnabled(for: request))
-
-                    Spacer()
-
-                    // Secondary action on the right: Decline
-                    Button(action: {
-                        store.resolve(request.id, AskResponse(id: request.id, status: .declined, answers: []))
-                    }) {
-                        Text("Decline")
-                            .font(.system(size: 14))
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-                    .buttonStyle(.plain)
+            CardToolbar {
+                Button("Decline") {
+                    store.resolve(request.id, AskResponse(id: request.id, status: .declined, answers: []))
                 }
-                .padding(.top, 14)
+                .capsuleButton(prominent: false)
+
+                Button("Submit") {
+                    cardState.submit(for: request, store: store)
+                }
+                .capsuleButton(prominent: true)
+                .disabled(!cardState.isSubmitEnabled(for: request))
             }
         }
         .onAppear {
@@ -243,16 +217,13 @@ struct QuestionCardView: View {
                     }
                 }
                 .padding(.vertical, 6)
+                .textHalo()
             }
 
             // Options separated by 1 px hairlines of white 0.14
             if !question.options.isEmpty {
-                VStack(spacing: 0) {
+                VStack(spacing: 2) {
                     ForEach(Array(question.options.enumerated()), id: \.element.label) { optIndex, option in
-                        Rectangle()
-                            .fill(Color.white.opacity(0.14))
-                            .frame(height: 1)
-
                         OptionRowView(
                             questionIndex: index,
                             question: question,
@@ -284,19 +255,9 @@ struct QuestionCardView: View {
                     set: { cardState.textAnswers[index] = $0 }
                 )
 
-                VStack(spacing: 0) {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.14))
-                        .frame(height: 1)
-
-                    TextField("", text: textBinding, prompt: Text(placeholder).foregroundColor(.white.opacity(0.4)))
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 14))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 4)
-                        .frame(height: 42)
-                        .focused($focusedQuestionIndex, equals: index)
-                }
+                CardTextField(placeholder: placeholder, text: textBinding)
+                    .focused($focusedQuestionIndex, equals: index)
+                    .padding(.top, 6)
             }
         }
     }
@@ -333,6 +294,7 @@ struct ActionCardView: View {
                     .foregroundColor(.white)
                     .lineLimit(2)
             }
+            .textHalo()
 
             // Detail
             if let detail = request.detail, !detail.isEmpty {
@@ -340,6 +302,7 @@ struct ActionCardView: View {
                     .font(.system(size: 13))
                     .foregroundColor(.white.opacity(0.7))
                     .textSelection(.enabled)
+                    .textHalo()
             }
 
             // Password warning as a row with lock.fill in systemOrange
@@ -356,62 +319,21 @@ struct ActionCardView: View {
             }
 
             // Note field as a borderless row with placeholder in white 0.4 and a hairline, no box
-            VStack(spacing: 0) {
-                Rectangle()
-                    .fill(Color.white.opacity(0.14))
-                    .frame(height: 1)
+            CardTextField(placeholder: "Note (optional)", text: $note)
+                .focused($isNoteFocused)
 
-                TextField("", text: $note, prompt: Text("Note (optional)").foregroundColor(.white.opacity(0.4)))
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 14))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 4)
-                    .frame(height: 42)
-                    .focused($isNoteFocused)
-            }
-
-            // Bottom toolbar after a hairline
-            VStack(spacing: 0) {
-                Rectangle()
-                    .fill(Color.white.opacity(0.14))
-                    .frame(height: 1)
-
-                HStack {
-                    // Primary action on the left: Done
-                    Button(action: {
-                        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
-                        store.resolve(request.id, AskResponse(id: request.id, status: .done, answers: [], note: trimmed.isEmpty ? nil : trimmed))
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 12, weight: .semibold))
-                            Text("Done")
-                                .font(.system(size: 14, weight: .semibold))
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 18)
-                        .frame(height: 32)
-                        .background(
-                            Capsule()
-                                .fill(Color(nsColor: .systemBlue))
-                        )
-                    }
-                    .buttonStyle(.plain)
-
-                    Spacer()
-
-                    // Secondary action on the right: Can't do it
-                    Button(action: {
-                        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
-                        store.resolve(request.id, AskResponse(id: request.id, status: .declined, answers: [], note: trimmed.isEmpty ? nil : trimmed))
-                    }) {
-                        Text("Can't do it")
-                            .font(.system(size: 14))
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-                    .buttonStyle(.plain)
+            CardToolbar {
+                Button("Can't do it") {
+                    let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+                    store.resolve(request.id, AskResponse(id: request.id, status: .declined, answers: [], note: trimmed.isEmpty ? nil : trimmed))
                 }
-                .padding(.top, 14)
+                .capsuleButton(prominent: false)
+
+                Button("Done") {
+                    let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+                    store.resolve(request.id, AskResponse(id: request.id, status: .done, answers: [], note: trimmed.isEmpty ? nil : trimmed))
+                }
+                .capsuleButton(prominent: true)
             }
         }
         .onChange(of: isNoteFocused) { _, newValue in
@@ -433,6 +355,7 @@ struct NotifyCardView: View {
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundColor(.white)
                 .lineLimit(2)
+                .textHalo()
 
             // Detail
             if let detail = request.detail, !detail.isEmpty {
@@ -440,35 +363,98 @@ struct NotifyCardView: View {
                     .font(.system(size: 13))
                     .foregroundColor(.white.opacity(0.7))
                     .textSelection(.enabled)
+                    .textHalo()
             }
 
-            // Bottom toolbar after a hairline
-            VStack(spacing: 0) {
-                Rectangle()
-                    .fill(Color.white.opacity(0.14))
-                    .frame(height: 1)
-
-                HStack {
-                    // Primary action on the left: Got it (no icon)
-                    Button(action: {
-                        store.resolve(request.id, AskResponse(id: request.id, status: .dismissed, answers: [], note: nil))
-                    }) {
-                        Text("Got it")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 18)
-                            .frame(height: 32)
-                            .background(
-                                Capsule()
-                                    .fill(Color(nsColor: .systemBlue))
-                            )
-                    }
-                    .buttonStyle(.plain)
-
-                    Spacer()
+            CardToolbar {
+                Button("Got it") {
+                    store.resolve(request.id, AskResponse(id: request.id, status: .dismissed, answers: [], note: nil))
                 }
-                .padding(.top, 14)
+                .capsuleButton(prominent: true)
             }
         }
+    }
+}
+
+
+// MARK: - Shared card pieces
+
+enum CardMetrics {
+    /// Rows and fields sit `rowInset` past the text column on each side, so their hover tile / field box
+    /// bleeds a little while the text stays aligned with the title.
+    static let rowInset: CGFloat = 10
+    static let rowRadius: CGFloat = 12
+}
+
+/// Bottom bar of every card, as in a macOS 26 compose sheet: the secondary (frosted) and primary (blue)
+/// capsules, right-aligned.
+struct CardToolbar<Buttons: View>: View {
+    @ViewBuilder var buttons: Buttons
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Spacer()
+            buttons
+        }
+        .padding(.top, 6)
+    }
+}
+
+extension View {
+    func capsuleButton(prominent: Bool) -> some View {
+        buttonStyle(GlassCapsuleButtonStyle(prominent: prominent))
+    }
+}
+
+/// Liquid Glass capsules: clear glass for the secondary action, blue-tinted glass for the primary one. Drawn
+/// with `glassEffect` instead of the system `.glass` button styles, which render as greyed-out inactive
+/// controls whenever the (non-activating) panel is not the key window.
+struct GlassCapsuleButtonStyle: ButtonStyle {
+    let prominent: Bool
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let tint: Color? = prominent ? Color(nsColor: .systemBlue).opacity(isEnabled ? 0.9 : 0.35) : nil
+        return configuration.label
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundColor(.white.opacity(isEnabled ? 1 : 0.6))
+            .padding(.horizontal, 20)
+            .frame(height: 36)
+            .contentShape(Capsule())
+            .glassEffect(.regular.tint(tint).interactive(), in: Capsule())
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+/// A soft frosted field instead of a hairline row.
+struct CardTextField: View {
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+        TextField("", text: $text, prompt: Text(placeholder).foregroundColor(.white.opacity(0.4)))
+            .textFieldStyle(.plain)
+            .font(.system(size: 14))
+            .foregroundColor(.white)
+            .padding(.horizontal, CardMetrics.rowInset)
+            .frame(height: 38)
+            .background(
+                RoundedRectangle(cornerRadius: CardMetrics.rowRadius, style: .continuous)
+                    .fill(Color.white.opacity(0.1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: CardMetrics.rowRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.75)
+            )
+            .padding(.horizontal, -CardMetrics.rowInset)
+    }
+}
+
+extension View {
+    /// Text sits on clear glass over any wallpaper: a soft dark halo keeps it legible. Text only, so buttons
+    /// and fields stay clean.
+    func textHalo() -> some View {
+        shadow(color: .black.opacity(0.45), radius: 2.5)
     }
 }

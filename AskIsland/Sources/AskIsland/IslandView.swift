@@ -9,9 +9,9 @@ enum NotchAnimation {
     static var open: Animation {
         .spring(response: 0.5, dampingFraction: 0.78)
     }
-    /// Close / shrink: critically damped so the capsule never dips below the notch on the way back.
+    /// Close / shrink: nearly critically damped, a touch of settle so it does not stop dead at the notch.
     static var close: Animation {
-        .spring(response: 0.4, dampingFraction: 1.0)
+        .spring(response: 0.52, dampingFraction: 0.9)
     }
 }
 
@@ -38,7 +38,8 @@ extension AnyTransition {
         .asymmetric(
             insertion: .blurFade.combined(with: .scale(scale: 0.92, anchor: .top))
                 .animation(NotchAnimation.open.delay(0.06)),
-            removal: .blurFade.animation(.easeOut(duration: 0.16))
+            removal: .blurFade.combined(with: .scale(scale: 0.94, anchor: .top))
+                .animation(.easeOut(duration: 0.18))
         )
     }
 }
@@ -59,7 +60,39 @@ final class ThickGlassView: NSGlassEffectView {
 
     override func layout() {
         super.layout()
+        retune()
+    }
+
+    private func retune() {
         if let layer { tune(layer) }
+    }
+
+    /// Focusing a text field makes the panel key and the app active; the glass then rebuilds its filters
+    /// for the new state without a layout pass, and the blur jumped back to the stock value. Re-apply on
+    /// those changes too (now and once the glass has settled).
+    private var stateObservers: [NSObjectProtocol] = []
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        stateObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        stateObservers = []
+        guard let window else { return }
+        let names: [(Notification.Name, AnyObject?)] = [
+            (NSWindow.didBecomeKeyNotification, window),
+            (NSWindow.didResignKeyNotification, window),
+            (NSApplication.didBecomeActiveNotification, nil),
+            (NSApplication.didResignActiveNotification, nil),
+        ]
+        for (name, object) in names {
+            stateObservers.append(NotificationCenter.default.addObserver(forName: name, object: object, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.retune()
+                    for delay in [0.05, 0.25] {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { self?.retune() }
+                    }
+                }
+            })
+        }
     }
 
     /// Rim highlight width: the rim's private CASDFKeyFillHighlightEffect draws it `keyHeight` / `fillHeight`
@@ -103,6 +136,8 @@ struct ClearLensGlass: NSViewRepresentable {
     /// Points from the top that stay solid black (notch + title row).
     var solidHeight: CGFloat
     var height: CGFloat
+    /// Glass hidden above the screen edge (the pushed-up top corners); the tint is laid out on the rest.
+    var topInset: CGFloat = 0
 
     final class TintView: NSView {
         let black = CAGradientLayer()
@@ -151,6 +186,9 @@ struct ClearLensGlass: NSViewRepresentable {
         glass.cornerRadius = cornerRadius
         guard let tint = glass.contentView as? TintView else { return }
         let h = max(height, 1)
+        let total = h + topInset
+        // Fractions below are of the visible height; map them onto the whole glass.
+        func at(_ y: Double) -> NSNumber { NSNumber(value: (Double(topInset) + y * Double(h)) / Double(total)) }
         // Proportions measured from the reference video: solid black over the top ~47% of the panel, then
         // a long, soft fade (half linear, half smoothstep) that is gone by ~90% of the height, leaving
         // milky glass at the bottom. A short capsule (the collapsed pill) stays black down to `solidHeight`.
@@ -166,7 +204,7 @@ struct ClearLensGlass: NSViewRepresentable {
             let t = Double(i) / Double(steps)
             let eased = 0.5 * t + 0.5 * t * t * (3 - 2 * t)
             let y = f0 + (f1 - f0) * t
-            blackStops.append(NSNumber(value: y))
+            blackStops.append(at(y))
             blackColors.append(NSColor.black.withAlphaComponent(1 - eased * reveal).cgColor)
         }
         blackStops.append(1)
@@ -177,7 +215,7 @@ struct ClearLensGlass: NSViewRepresentable {
         var milkStops: [NSNumber] = [0]
         for i in 0...steps {
             let t = Double(i) / Double(steps)
-            milkStops.append(NSNumber(value: f0 + (1 - f0) * t))
+            milkStops.append(at(f0 + (1 - f0) * t))
             milkColors.append(NSColor.white.withAlphaComponent(Self.milkMax * pow(t, 1.2) * reveal).cgColor)
         }
         CATransaction.begin()
@@ -192,31 +230,130 @@ struct ClearLensGlass: NSViewRepresentable {
     }
 }
 
-/// The island's glass at a given size. Animatable, so SwiftUI re-lays it out every frame of a spring:
-/// the capsule really changes width, height and corner radius (a scaleEffect would squash the corners
-/// and the lens edge, and NSViewRepresentable frames are not interpolated on their own).
-struct IslandGlass: View, Animatable {
+/// The island's surface at a given size, morphing between the collapsed notch extension (`glass` = 0:
+/// solid black, small bottom radius, tiny shoulders) and the glass panel (`glass` = 1). Animatable, so
+/// SwiftUI re-lays it out every frame of a spring: the shape really changes width, height and radius (a
+/// scaleEffect would squash the corners and the lens edge, and NSViewRepresentable frames are not
+/// interpolated on their own). The top edge is flat on the screen edge and flares out into the menu bar
+/// through concave shoulders, like the hardware notch, instead of rounding inward.
+struct IslandSurface: View, Animatable {
     var width: CGFloat
     var height: CGFloat
+    var glass: CGFloat
     var solidHeight: CGFloat
+    var notchHeight: CGFloat
 
-    static let maxRadius: CGFloat = 64
+    static let panelRadius: CGFloat = 40
+    static let pillRadius: CGFloat = 12
+    static let panelShoulder: CGFloat = 14
+    static let pillShoulder: CGFloat = 4
 
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(width, height) }
-        set { width = newValue.first; height = newValue.second }
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat> {
+        get { AnimatablePair(AnimatablePair(width, height), glass) }
+        set { width = newValue.first.first; height = newValue.first.second; glass = newValue.second }
+    }
+
+    static func radius(width: CGFloat, height: CGFloat, glass: CGFloat) -> CGFloat {
+        let r = pillRadius + (panelRadius - pillRadius) * glass
+        return max(0, min(r, height / 2, width / 2))
     }
 
     var body: some View {
-        let radius = min(Self.maxRadius, height / 2, width / 2)
-        Group {
-            if #available(macOS 26.0, *) {
-                ClearLensGlass(cornerRadius: radius, solidHeight: solidHeight, height: height)
-            } else {
-                RoundedRectangle(cornerRadius: radius, style: .continuous).fill(.black)
+        let g = min(max(glass, 0), 1)
+        let radius = Self.radius(width: width, height: height, glass: g)
+        let shoulder = Self.pillShoulder + (Self.panelShoulder - Self.pillShoulder) * g
+        // Black notch shape: covers everything while collapsed, then pulls back to the band under the notch
+        // (where the glass tint is black anyway) so only its flared shoulders remain over the glass.
+        // Eased (g^3) so the black closes over the glass early on the way down and the shrinking capsule
+        // reads as the dark notch, not a grey slab; on the way up the glass opens only near full size.
+        let gb = g * g * g
+        let solidTo = height + (notchHeight - height) * gb
+        let fadeTo = height + (notchHeight * 2 - height) * gb
+        ZStack(alignment: .top) {
+            if #available(macOS 26.0, *), g > 0.001 {
+                // Top corners pushed above the screen edge: only the bottom corners (and their rim) show.
+                ClearLensGlass(cornerRadius: radius, solidHeight: solidHeight, height: height, topInset: radius * 2)
+                    .frame(width: width, height: height + radius * 2)
+                    .offset(y: -radius * 2)
+                    .opacity(g)
             }
+            NotchShape(bottomRadius: radius, shoulder: shoulder)
+                .fill(.black)
+                .frame(width: width + shoulder * 2, height: height)
+                .mask(alignment: .top) {
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black, location: 0),
+                            .init(color: .black, location: min(solidTo / max(height, 1), 1)),
+                            .init(color: .clear, location: min(fadeTo / max(height, 1), 1) + 0.0001),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
         }
-        .frame(width: width, height: height)
+        .frame(width: width + shoulder * 2, height: height, alignment: .top)
+    }
+}
+
+/// Flat top on the screen edge, concave shoulders flaring out by `shoulder` on both sides (drawn inside the
+/// frame, so the frame is `shoulder` wider on each side than the body), straight sides, round bottom corners.
+struct NotchShape: Shape {
+    var bottomRadius: CGFloat
+    var shoulder: CGFloat
+
+    func path(in frame: CGRect) -> Path {
+        let ext = shoulder
+        let rect = frame.insetBy(dx: ext, dy: 0)
+        let br = min(bottomRadius, rect.width / 2, rect.height / 2)
+        let k: CGFloat = 0.62  // continuous-curvature corners
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX - ext, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX + ext, y: rect.minY))
+        p.addCurve(
+            to: CGPoint(x: rect.maxX, y: rect.minY + ext),
+            control1: CGPoint(x: rect.maxX + ext * 0.35, y: rect.minY),
+            control2: CGPoint(x: rect.maxX, y: rect.minY + ext * 0.35)
+        )
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - br))
+        p.addCurve(
+            to: CGPoint(x: rect.maxX - br, y: rect.maxY),
+            control1: CGPoint(x: rect.maxX, y: rect.maxY - br * (1 - k)),
+            control2: CGPoint(x: rect.maxX - br * (1 - k), y: rect.maxY)
+        )
+        p.addLine(to: CGPoint(x: rect.minX + br, y: rect.maxY))
+        p.addCurve(
+            to: CGPoint(x: rect.minX, y: rect.maxY - br),
+            control1: CGPoint(x: rect.minX + br * (1 - k), y: rect.maxY),
+            control2: CGPoint(x: rect.minX, y: rect.maxY - br * (1 - k))
+        )
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + ext))
+        p.addCurve(
+            to: CGPoint(x: rect.minX - ext, y: rect.minY),
+            control1: CGPoint(x: rect.minX, y: rect.minY + ext * 0.35),
+            control2: CGPoint(x: rect.minX - ext * 0.35, y: rect.minY)
+        )
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// Clip for the island's content, animated with the same spring as the surface, so content never spills
+/// outside the shape while it grows or shrinks.
+struct IslandClipShape: Shape {
+    var width: CGFloat
+    var height: CGFloat
+    var glass: CGFloat
+
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat> {
+        get { AnimatablePair(AnimatablePair(width, height), glass) }
+        set { width = newValue.first.first; height = newValue.first.second; glass = newValue.second }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let r = IslandSurface.radius(width: width, height: height, glass: min(max(glass, 0), 1))
+        let body = CGRect(x: rect.midX - width / 2, y: rect.minY - r, width: width, height: height + r)
+        return Path(roundedRect: body, cornerRadius: r, style: .continuous)
     }
 }
 
@@ -245,6 +382,8 @@ struct IslandRootView: View {
     var onFocusTextField: () -> Void
 
     @State private var measuredExpandedHeight: CGFloat = 0
+    /// Pointer over the collapsed pill: it swells a little (wider and a bit taller) as a hover cue.
+    @State private var pillHovered = false
 
     private var isCollapsed: Bool { controller.isCollapsed }
     private var pulseTrigger: Int { controller.pulseTrigger }
@@ -287,68 +426,93 @@ struct IslandRootView: View {
         return min(max(h, notchHeight + 60), maxPanelHeight)
     }
 
-    private var collapsedWidth: CGFloat { notchWidth + 90 }
+    private var collapsedWidth: CGFloat { notchWidth + 24 }
     private var collapsedHeight: CGFloat { notchHeight + CollapsedIslandView.stripHeight }
 
-    /// Size of the one glass capsule in each state; the springs in `body` morph between them.
-    private var glassSize: CGSize {
+    /// Size of the one surface in each state; the springs in `body` morph between them.
+    private var surfaceSize: CGSize {
         switch currentState {
         case .hidden: return CGSize(width: notchWidth, height: notchHeight)
-        case .collapsed: return CGSize(width: collapsedWidth, height: collapsedHeight)
+        case .collapsed:
+            return CGSize(width: collapsedWidth + (pillHovered ? 20 : 0), height: collapsedHeight + (pillHovered ? 4 : 0))
         case .expanded: return CGSize(width: 480, height: expandedHeight)
         }
     }
 
+    /// 0 = plain black notch extension (hidden, collapsed), 1 = glass panel.
+    private var glassAmount: CGFloat { currentState == .expanded ? 1 : 0 }
+
+    /// Clickable area: the surface plus its shoulders. Everywhere else the window lets clicks through.
+    private var hitSize: CGSize {
+        let shoulder = currentState == .expanded ? IslandSurface.panelShoulder : IslandSurface.pillShoulder
+        return CGSize(width: surfaceSize.width + shoulder * 2, height: surfaceSize.height)
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
-            // One capsule for every state: it stretches out of the notch into the pill and on into the
-            // panel, all corners round, its top edge on the screen's top edge (behind the menu bar strip).
-            IslandGlass(width: glassSize.width, height: glassSize.height, solidHeight: notchHeight + 40)
-                .opacity(currentState == .hidden ? 0 : 1)
-                .allowsHitTesting(false)
+            // One surface for every state: it extends the notch downward into the pill and grows on into the
+            // glass panel, its flat top on the screen's top edge, flaring into the menu bar at the shoulders.
+            IslandSurface(
+                width: surfaceSize.width,
+                height: surfaceSize.height,
+                glass: glassAmount,
+                solidHeight: notchHeight + 40,
+                notchHeight: notchHeight
+            )
+            .opacity(currentState == .hidden ? 0 : 1)
+            .allowsHitTesting(false)
 
-            // Collapsed pill
-            if currentState == .collapsed {
-                CollapsedIslandView(
-                    count: store.pending.count,
-                    pulseTrigger: pulseTrigger,
-                    onExpand: {
-                        withAnimation(NotchAnimation.open) {
-                            controller.isCollapsed = false
+            ZStack(alignment: .top) {
+                // Collapsed pill
+                if currentState == .collapsed {
+                    CollapsedIslandView(
+                        count: store.pending.count,
+                        pulseTrigger: pulseTrigger,
+                        hovered: pillHovered,
+                        onExpand: {
+                            withAnimation(NotchAnimation.open) {
+                                controller.isCollapsed = false
+                            }
                         }
+                    )
+                    .frame(width: surfaceSize.width, height: surfaceSize.height, alignment: .top)
+                    .onHover { hovering in
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.65)) { pillHovered = hovering }
                     }
-                )
-                .frame(width: collapsedWidth, height: collapsedHeight, alignment: .top)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    withAnimation(NotchAnimation.open) {
-                        controller.isCollapsed = false
-                    }
+                    .transition(.islandCard)
                 }
-                .transition(.islandCard)
-            }
 
-            // Expanded card content
-            if isExpanded, let request = store.pending.first {
-                ExpandedIslandView(
-                    request: request,
-                    store: store,
-                    cardState: cardState,
-                    isCollapsed: collapsedBinding,
-                    onFocusTextField: onFocusTextField,
-                    onHeightChanged: { height in
-                        measuredExpandedHeight = height
-                    }
-                )
-                .frame(width: 480, height: expandedHeight, alignment: .top)
-                .id(request.id)
-                .transition(.islandCard)
+                // Expanded card content
+                if isExpanded, let request = store.pending.first {
+                    ExpandedIslandView(
+                        request: request,
+                        store: store,
+                        cardState: cardState,
+                        isCollapsed: collapsedBinding,
+                        onFocusTextField: onFocusTextField,
+                        onHeightChanged: { height in
+                            measuredExpandedHeight = height
+                        }
+                    )
+                    .frame(width: 480, height: expandedHeight, alignment: .top)
+                    .id(request.id)
+                    .transition(.islandCard)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            // Content is cut by the moving surface edge, so nothing spills out while it grows or shrinks.
+            .clipShape(IslandClipShape(width: surfaceSize.width, height: surfaceSize.height, glass: glassAmount))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(currentState == .expanded ? NotchAnimation.open : NotchAnimation.close, value: currentState)
+        .onChange(of: currentState) { _, state in
+            if state != .collapsed { pillHovered = false }
+        }
         .animation(NotchAnimation.open, value: store.pending.first?.id)
         .animation(NotchAnimation.open, value: measuredExpandedHeight)
+        .onChange(of: hitSize, initial: true) { _, size in
+            controller.hitSize = size
+        }
     }
 }
 
@@ -357,12 +521,13 @@ struct IslandRootView: View {
 struct CollapsedIslandView: View {
     let count: Int
     let pulseTrigger: Int
+    var hovered = false
     let onExpand: () -> Void
 
     @State private var pulseScale: CGFloat = 1.0
 
     /// The hardware notch hides everything drawn at its height, so the badge sits in a strip below it.
-    static let stripHeight: CGFloat = 26
+    static let stripHeight: CGFloat = 22
 
     var body: some View {
         HStack(spacing: 6) {
@@ -379,7 +544,7 @@ struct CollapsedIslandView: View {
                 .scaleEffect(pulseScale)
             Text("Needs you")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white.opacity(0.85))
+                .foregroundColor(.white.opacity(hovered ? 1 : 0.8))
             Spacer()
         }
         .frame(height: Self.stripHeight)
@@ -512,9 +677,6 @@ struct ExpandedIslandView: View {
                 }
                 .padding(.horizontal, 28)
                 .padding(.bottom, 24)
-                // The lower card sits on clear glass; a tight dark halo keeps text legible over any wallpaper.
-                .shadow(color: .black.opacity(0.9), radius: 1.5)
-                .shadow(color: .black.opacity(0.6), radius: 6)
                 .background(
                     GeometryReader { geo in
                         Color.clear.preference(key: ContentHeightPreferenceKey.self, value: geo.size.height)

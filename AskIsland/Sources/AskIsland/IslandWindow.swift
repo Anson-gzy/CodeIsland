@@ -103,6 +103,13 @@ final class IslandWindowController: ObservableObject {
     @Published var isCollapsed: Bool = false
     @Published var pulseTrigger: Int = 0
 
+    /// Clickable size of the island (top-centered in the panel), reported by the root view. The panel is
+    /// much larger than the island, so it only takes mouse events while the pointer is over the island.
+    var hitSize: CGSize = .zero {
+        didSet { updateMousePassThrough() }
+    }
+    private var pointerTimer: Timer?
+
     var isPendingEmpty: Bool {
         store.pending.isEmpty
     }
@@ -218,7 +225,6 @@ final class IslandWindowController: ObservableObject {
                 withAnimation(NotchAnimation.open) {
                     isCollapsed = false
                 }
-                panel?.ignoresMouseEvents = false
                 panel?.orderFrontRegardless()
             } else if isCollapsed {
                 // Keep collapsed and pulse badge once
@@ -235,15 +241,33 @@ final class IslandWindowController: ObservableObject {
             }
             previousApp = nil
 
-            // Resolving the last request animates expanded to hidden and only then sets ignoresMouseEvents true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-                guard let self = self, self.isPendingEmpty else { return }
-                self.panel?.ignoresMouseEvents = true
-            }
+            panel?.ignoresMouseEvents = true
+            pointerTimer?.invalidate()
+            pointerTimer = nil
         } else {
-            panel?.ignoresMouseEvents = false
             panel?.orderFrontRegardless()
+            // Poll the pointer only while something is showing (no wakeups on an idle Mac).
+            if pointerTimer == nil {
+                pointerTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+                    Task { @MainActor in self?.updateMousePassThrough() }
+                }
+            }
         }
+        updateMousePassThrough()
+    }
+
+    /// Clicks outside the island fall through to whatever is underneath.
+    func updateMousePassThrough() {
+        guard let panel else { return }
+        guard !store.pending.isEmpty, hitSize.width > 0 else {
+            if !panel.ignoresMouseEvents { panel.ignoresMouseEvents = true }
+            return
+        }
+        let f = panel.frame
+        let island = NSRect(x: f.midX - hitSize.width / 2, y: f.maxY - hitSize.height,
+                            width: hitSize.width, height: hitSize.height)
+        let ignore = !island.contains(NSEvent.mouseLocation)
+        if panel.ignoresMouseEvents != ignore { panel.ignoresMouseEvents = ignore }
     }
 
     func updateWindowFrame() {
