@@ -5,13 +5,13 @@ import AskIslandCore
 // MARK: - Animation & Transitions
 
 enum NotchAnimation {
-    /// 展开面板：微弹，有少许回弹感
+    /// Open / grow: a soft spring with a little overshoot, like the notch stretching into a capsule.
     static var open: Animation {
-        .spring(response: 0.42, dampingFraction: 0.82)
+        .spring(response: 0.5, dampingFraction: 0.78)
     }
-    /// 收起面板：临界阻尼，无过冲（防止 NotchPanelShape 底边露出刘海）
+    /// Close / shrink: critically damped so the capsule never dips below the notch on the way back.
     static var close: Animation {
-        .spring(response: 0.38, dampingFraction: 1.0)
+        .spring(response: 0.4, dampingFraction: 1.0)
     }
 }
 
@@ -19,7 +19,7 @@ private struct BlurFadeModifier: ViewModifier {
     let active: Bool
     func body(content: Content) -> some View {
         content
-            .blur(radius: active ? 5 : 0)
+            .blur(radius: active ? 10 : 0)
             .opacity(active ? 0 : 1)
     }
 }
@@ -32,62 +32,18 @@ extension AnyTransition {
         )
     }
 
+    /// Content morphs with the glass: it comes in blurred and slightly small from the top, and leaves
+    /// by blurring out quickly so the next content can resolve inside the reshaping capsule.
     static var islandCard: AnyTransition {
-        .blurFade.combined(with: .scale(scale: 0.96, anchor: .top))
+        .asymmetric(
+            insertion: .blurFade.combined(with: .scale(scale: 0.92, anchor: .top))
+                .animation(NotchAnimation.open.delay(0.06)),
+            removal: .blurFade.animation(.easeOut(duration: 0.16))
+        )
     }
 }
 
-// MARK: - Notch Shapes & Glass Background
-
-struct NotchPanelShape: Shape {
-    var topExtension: CGFloat
-    var bottomRadius: CGFloat
-    var minHeight: CGFloat = 0
-
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(topExtension, bottomRadius) }
-        set {
-            topExtension = newValue.first
-            bottomRadius = newValue.second
-        }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        let ext = topExtension
-        let maxY = max(rect.maxY, rect.minY + minHeight)
-        let br = min(bottomRadius, rect.width / 4, (maxY - rect.minY) / 2)
-        let k: CGFloat = 0.62
-
-        var p = Path()
-        p.move(to: CGPoint(x: rect.minX - ext, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.maxX + ext, y: rect.minY))
-        p.addCurve(
-            to: CGPoint(x: rect.maxX, y: rect.minY + ext),
-            control1: CGPoint(x: rect.maxX + ext * 0.35, y: rect.minY),
-            control2: CGPoint(x: rect.maxX, y: rect.minY + ext * 0.35)
-        )
-        p.addLine(to: CGPoint(x: rect.maxX, y: maxY - br))
-        p.addCurve(
-            to: CGPoint(x: rect.maxX - br, y: maxY),
-            control1: CGPoint(x: rect.maxX, y: maxY - br * (1 - k)),
-            control2: CGPoint(x: rect.maxX - br * (1 - k), y: maxY)
-        )
-        p.addLine(to: CGPoint(x: rect.minX + br, y: maxY))
-        p.addCurve(
-            to: CGPoint(x: rect.minX, y: maxY - br),
-            control1: CGPoint(x: rect.minX + br * (1 - k), y: maxY),
-            control2: CGPoint(x: rect.minX, y: maxY - br * (1 - k))
-        )
-        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + ext))
-        p.addCurve(
-            to: CGPoint(x: rect.minX - ext, y: rect.minY),
-            control1: CGPoint(x: rect.minX, y: rect.minY + ext * 0.35),
-            control2: CGPoint(x: rect.minX - ext * 0.35, y: rect.minY)
-        )
-        p.closeSubpath()
-        return p
-    }
-}
+// MARK: - Glass
 
 /// Glass whose white specular rim is switched off: the reference has refraction at the edge but no
 /// bright line. Layer "@3" of NSGlassEffectView draws that rim (macOS 27.2); "@1" carries the content and
@@ -106,9 +62,39 @@ final class RimlessGlassView: NSGlassEffectView {
     }
 }
 
+/// Clear lens glass (private variant 11: no background blur, refraction at the edge) tinted from the top:
+/// solid black over the notch and the title row, then thinning out into a faint milky haze, so the lower
+/// part reads as slightly frosted-white glass rather than a hole in the panel.
 @available(macOS 26.0, *)
 struct ClearLensGlass: NSViewRepresentable {
     var cornerRadius: CGFloat
+    /// Points from the top that stay solid black (notch + title row).
+    var solidHeight: CGFloat
+    var height: CGFloat
+
+    final class TintView: NSView {
+        let black = CAGradientLayer()
+        let milk = CAGradientLayer()
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            layer = CALayer()
+            for g in [milk, black] {
+                g.startPoint = CGPoint(x: 0.5, y: 1)
+                g.endPoint = CGPoint(x: 0.5, y: 0)
+                layer?.addSublayer(g)
+            }
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        override func layout() {
+            super.layout()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            black.frame = bounds
+            milk.frame = bounds
+            CATransaction.commit()
+        }
+    }
 
     func makeNSView(context: Context) -> NSGlassEffectView {
         let glass = RimlessGlassView()
@@ -116,62 +102,62 @@ struct ClearLensGlass: NSViewRepresentable {
         if glass.responds(to: Selector(("set_variant:"))) {
             glass.setValue(11, forKey: "_variant")
         }
-        let tint = NSView()
-        tint.wantsLayer = true
-        let gradient = CAGradientLayer()
-        gradient.colors = [1.0, 1.0, 0.9, 0.78, 0.7, 0.66].map { NSColor.black.withAlphaComponent($0).cgColor }
-        gradient.locations = [0, 0.22, 0.38, 0.58, 0.82, 1].map { NSNumber(value: Double($0)) }
-        gradient.startPoint = CGPoint(x: 0.5, y: 1)
-        gradient.endPoint = CGPoint(x: 0.5, y: 0)
-        tint.layer = gradient
+        let tint = TintView()
         tint.autoresizingMask = [.width, .height]
         glass.contentView = tint
-        glass.cornerRadius = cornerRadius
+        apply(to: glass)
         return glass
     }
 
     func updateNSView(_ glass: NSGlassEffectView, context: Context) {
+        apply(to: glass)
+    }
+
+    private func apply(to glass: NSGlassEffectView) {
         glass.cornerRadius = cornerRadius
-        glass.contentView?.layer?.frame = glass.bounds
+        guard let tint = glass.contentView as? TintView else { return }
+        let h = max(height, 1)
+        // Locations in points, converted to fractions of the current height so the black band keeps its
+        // size while the capsule grows; a small capsule (collapsed pill) is black all the way down.
+        func at(_ y: CGFloat) -> NSNumber { NSNumber(value: Double(min(max(y / h, 0), 1))) }
+        let s = solidHeight
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        tint.black.colors = [1.0, 1.0, 0.72, 0.4, 0.22, 0.16].map { NSColor.black.withAlphaComponent($0).cgColor }
+        tint.black.locations = [at(0), at(s), at(s + 36), at(s + 90), at(s + 170), at(h)]
+        tint.milk.colors = [0.0, 0.0, 0.08, 0.13].map { NSColor.white.withAlphaComponent($0).cgColor }
+        tint.milk.locations = [at(0), at(s), at(s + 120), at(h)]
+        CATransaction.commit()
+        tint.needsLayout = true
         glass.needsLayout = true
     }
 }
 
-struct IslandBackground: View {
-    let shape: NotchPanelShape
-    let expanded: Bool
-    let notchHeight: CGFloat
+/// The island's glass at a given size. Animatable, so SwiftUI re-lays it out every frame of a spring:
+/// the capsule really changes width, height and corner radius (a scaleEffect would squash the corners
+/// and the lens edge, and NSViewRepresentable frames are not interpolated on their own).
+struct IslandGlass: View, Animatable {
+    var width: CGFloat
+    var height: CGFloat
+    var solidHeight: CGFloat
 
-    static let glassRadius: CGFloat = 56
+    static let maxRadius: CGFloat = 56
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(width, height) }
+        set { width = newValue.first; height = newValue.second }
+    }
 
     var body: some View {
-        if #available(macOS 26.0, *), expanded {
-            ZStack(alignment: .top) {
-                // Top edge pushed above the window so only the bottom corners round.
-                ClearLensGlass(cornerRadius: Self.glassRadius)
-                    .padding(.top, -Self.glassRadius * 2)
-                // Solid black band that joins the notch; drawn in the panel's own frame so the shape's
-                // concave shoulders flare out at the screen's top edge.
-                shape.fill(.black)
-                    .mask(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .black, location: 0),
-                                .init(color: .black, location: 0.55),
-                                .init(color: .clear, location: 1),
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: notchHeight * 2.4)
-                        .padding(.horizontal, -shape.topExtension)
-                        .frame(maxHeight: .infinity, alignment: .top)
-                    )
+        let radius = min(Self.maxRadius, height / 2, width / 2)
+        Group {
+            if #available(macOS 26.0, *) {
+                ClearLensGlass(cornerRadius: radius, solidHeight: solidHeight, height: height)
+            } else {
+                RoundedRectangle(cornerRadius: radius, style: .continuous).fill(.black)
             }
-            .transition(.opacity)
-        } else {
-            shape.fill(.black)
         }
+        .frame(width: width, height: height)
     }
 }
 
@@ -242,32 +228,25 @@ struct IslandRootView: View {
         return min(max(h, notchHeight + 60), maxPanelHeight)
     }
 
-    private var glassScaleX: CGFloat {
-        isExpanded ? 1.0 : (notchWidth / 480.0)
-    }
+    private var collapsedWidth: CGFloat { notchWidth + 90 }
+    private var collapsedHeight: CGFloat { notchHeight + CollapsedIslandView.stripHeight }
 
-    private var glassScaleY: CGFloat {
-        isExpanded ? 1.0 : (notchHeight / expandedHeight)
+    /// Size of the one glass capsule in each state; the springs in `body` morph between them.
+    private var glassSize: CGSize {
+        switch currentState {
+        case .hidden: return CGSize(width: notchWidth, height: notchHeight)
+        case .collapsed: return CGSize(width: collapsedWidth, height: collapsedHeight)
+        case .expanded: return CGSize(width: 480, height: expandedHeight)
+        }
     }
 
     var body: some View {
         ZStack(alignment: .top) {
-            // Glass background laid out at final size (480 x expandedHeight)
-            // Animated with scaleEffect anchored at top from notch width/height ratios to 1
-            IslandBackground(
-                shape: NotchPanelShape(
-                    topExtension: 30,
-                    bottomRadius: IslandBackground.glassRadius,
-                    minHeight: notchHeight
-                ),
-                expanded: true,
-                notchHeight: notchHeight
-            )
-            // Not clipped: the black band's shoulders reach past the panel's sides at the screen edge.
-            .frame(width: 480, height: expandedHeight, alignment: .top)
-            .scaleEffect(x: glassScaleX, y: glassScaleY, anchor: .top)
-            .opacity(isExpanded ? 1.0 : 0.0)
-            .allowsHitTesting(isExpanded)
+            // One capsule for every state: it stretches out of the notch into the pill and on into the
+            // panel, all corners round, its top edge on the screen's top edge (behind the menu bar strip).
+            IslandGlass(width: glassSize.width, height: glassSize.height, solidHeight: notchHeight + 40)
+                .opacity(currentState == .hidden ? 0 : 1)
+                .allowsHitTesting(false)
 
             // Collapsed pill
             if currentState == .collapsed {
@@ -280,15 +259,7 @@ struct IslandRootView: View {
                         }
                     }
                 )
-                .frame(width: notchWidth + 24, height: notchHeight + CollapsedIslandView.stripHeight, alignment: .top)
-                .background(
-                    NotchPanelShape(
-                        topExtension: 3,
-                        bottomRadius: 12,
-                        minHeight: notchHeight
-                    )
-                    .fill(.black)
-                )
+                .frame(width: collapsedWidth, height: collapsedHeight, alignment: .top)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     withAnimation(NotchAnimation.open) {

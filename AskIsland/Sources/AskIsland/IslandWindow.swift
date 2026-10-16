@@ -158,7 +158,7 @@ final class IslandWindowController: ObservableObject {
 
         let screen = ScreenDetector.preferredScreen
         let screenFrame = screen.frame
-        let width: CGFloat = 560  // 480 island + room for the black shoulders at the top
+        let width: CGFloat = 560  // 480 island + room for the spring overshoot
         let height: CGFloat = screenFrame.height * 0.7
         let x = screenFrame.midX - width / 2
         let y = screenFrame.maxY - height
@@ -250,7 +250,7 @@ final class IslandWindowController: ObservableObject {
         guard let panel = panel else { return }
         let screen = ScreenDetector.preferredScreen
         let screenFrame = screen.frame
-        let width: CGFloat = 560  // 480 island + room for the black shoulders at the top
+        let width: CGFloat = 560  // 480 island + room for the spring overshoot
         let height: CGFloat = screenFrame.height * 0.7
         let x = screenFrame.midX - width / 2
         let y = screenFrame.maxY - height

@@ -140,20 +140,28 @@ The island grows out of the notch and shrinks back into it; the window never res
 
 ## Visual style (reference: a Liquid Glass "New Message" compose sheet)
 
-The whole island reads as one thick slab of clear glass hanging from the notch, styled like a macOS 26
-compose sheet. All UI text is English.
+The whole island is one capsule of clear lens glass hanging from the notch (iOS Spotlight / "Search or Ask"
+look), styled like a macOS 26 compose sheet. All UI text is English.
 
-**Slab**
-- `ClearLensGlass` (`_variant` 11) with corner radius 56 for the bottom corners: on this glass the refracting
-  rim is as wide as the corner radius, so a large radius is what gives the thick lensing border on the left,
-  right and bottom edges. The top stays pushed above the window so only the bottom corners round.
-- No white specular rim: the reference refracts at the edge but has no bright line. `RimlessGlassView`
-  hides the glass's layer named `@3` (the rim highlight on macOS 27.2) on every layout.
-- The solid black band at the top joins the notch and flares out into concave shoulders (`topExtension` 30)
-  at the screen's top edge, so the window is 560 wide for a 480 island.
-- Tint inside the glass, top to bottom: solid black through the notch band, then fading to a dim smoke that
-  never goes fully clear (the reference is mostly dark glass): black alpha `[1, 1, 0.9, 0.78, 0.7, 0.66]` at `[0, 0.22, 0.38, 0.58, 0.82, 1]`. Text
-  sits on the smoke; keep the tight dark text shadow.
+**Capsule**
+- `ClearLensGlass` (`_variant` 11), all four corners round, top edge on the screen's top edge, corner radius
+  `min(56, height/2)`: on this glass the refracting rim is as wide as the corner radius, so a large radius is
+  what gives the thick lensing border on the sides and bottom.
+- No white specular rim: `RimlessGlassView` hides the glass's layer named `@3` (the rim highlight on macOS
+  27.2) on every layout.
+- Tint inside the glass, positions in points from the top (`s` = notch height + 40, the title row): black
+  alpha 1 down to `s`, then 0.72 at `s+36`, 0.4 at `s+90`, 0.22 at `s+170`, 0.16 at the bottom; under it a
+  milky white haze, 0 down to `s`, 0.08 at `s+120`, 0.13 at the bottom. The lower part is never plain clear:
+  it reads as slightly white glass. Text keeps its tight dark shadow.
+- The same capsule is the collapsed pill (notch width + 90 by notch height + 26): at that size it is black
+  all the way down.
+
+**Motion (reference: the iOS notch-to-Spotlight video)**
+- One `IslandGlass` view is resized, not scaled: it is `Animatable` over width and height, so every spring
+  frame re-lays out the glass and the corners and lens edge stay true. hidden = notch size (faded out),
+  collapsed = pill, expanded = 480 by content height.
+- Open: `spring(response 0.5, damping 0.78)`; close: `spring(0.4, 1.0)`. Content comes in with blur 10 + fade
+  + scale 0.92 from the top, 0.06 s after the glass starts; it leaves with a 0.16 s blur-out.
 - Content is inset 28 pt from the left/right edges and 24 pt from the bottom so nothing sits on the rim.
 
 **Layout, like the compose sheet**
