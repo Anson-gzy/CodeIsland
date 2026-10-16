@@ -22,6 +22,27 @@ public struct AskOption: Codable, Hashable, Sendable {
     public init(label: String, description: String? = nil) {
         self.label = label; self.description = description
     }
+
+    enum CodingKeys: String, CodingKey {
+        case label, description
+    }
+
+    public init(from decoder: Decoder) throws {
+        if let single = try? decoder.singleValueContainer(), let str = try? single.decode(String.self) {
+            self.label = str
+            self.description = nil
+            return
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.label = try container.decode(String.self, forKey: .label)
+        self.description = try container.decodeIfPresent(String.self, forKey: .description)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(label, forKey: .label)
+        try container.encodeIfPresent(description, forKey: .description)
+    }
 }
 
 public struct AskQuestion: Codable, Hashable, Sendable {
@@ -35,6 +56,32 @@ public struct AskQuestion: Codable, Hashable, Sendable {
                 multiSelect: Bool = false, allowText: Bool = true) {
         self.header = header; self.question = question; self.options = options
         self.multiSelect = multiSelect; self.allowText = allowText
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case header, question, options, multiSelect, multi_select, allowText, allow_text
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.header = try container.decodeIfPresent(String.self, forKey: .header)
+        self.question = try container.decode(String.self, forKey: .question)
+        self.options = (try container.decodeIfPresent([AskOption].self, forKey: .options)) ?? []
+        self.multiSelect = (try? container.decodeIfPresent(Bool.self, forKey: .multiSelect))
+            ?? (try? container.decodeIfPresent(Bool.self, forKey: .multi_select))
+            ?? false
+        self.allowText = (try? container.decodeIfPresent(Bool.self, forKey: .allowText))
+            ?? (try? container.decodeIfPresent(Bool.self, forKey: .allow_text))
+            ?? true
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(header, forKey: .header)
+        try container.encode(question, forKey: .question)
+        try container.encode(options, forKey: .options)
+        try container.encode(multiSelect, forKey: .multiSelect)
+        try container.encode(allowText, forKey: .allowText)
     }
 }
 
@@ -72,6 +119,51 @@ public struct AskRequest: Codable, Identifiable, Hashable, Sendable {
         self.questions = questions; self.actionKind = actionKind; self.source = source
         self.timeoutSeconds = timeoutSeconds; self.createdAt = createdAt
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, title, detail, questions, actionKind, action_kind, source, timeoutSeconds, timeout_seconds, createdAt, created_at
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = (try container.decodeIfPresent(String.self, forKey: .id)) ?? ""
+        self.kind = try container.decode(AskKind.self, forKey: .kind)
+        self.title = try container.decode(String.self, forKey: .title)
+        self.detail = try container.decodeIfPresent(String.self, forKey: .detail)
+        self.questions = (try container.decodeIfPresent([AskQuestion].self, forKey: .questions)) ?? []
+        self.actionKind = (try? container.decodeIfPresent(ActionKind.self, forKey: .actionKind))
+            ?? (try? container.decodeIfPresent(ActionKind.self, forKey: .action_kind))
+        self.source = try container.decodeIfPresent(AskSource.self, forKey: .source)
+        self.timeoutSeconds = (try? container.decodeIfPresent(Int.self, forKey: .timeoutSeconds))
+            ?? (try? container.decodeIfPresent(Int.self, forKey: .timeout_seconds))
+
+        if let d = try? container.decodeIfPresent(Date.self, forKey: .createdAt) {
+            self.createdAt = d
+        } else if let str = try? container.decodeIfPresent(String.self, forKey: .createdAt),
+                  let d = ISO8601DateFormatter().date(from: str) {
+            self.createdAt = d
+        } else if let d = try? container.decodeIfPresent(Date.self, forKey: .created_at) {
+            self.createdAt = d
+        } else if let str = try? container.decodeIfPresent(String.self, forKey: .created_at),
+                  let d = ISO8601DateFormatter().date(from: str) {
+            self.createdAt = d
+        } else {
+            self.createdAt = Date()
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(title, forKey: .title)
+        try container.encodeIfPresent(detail, forKey: .detail)
+        try container.encode(questions, forKey: .questions)
+        try container.encodeIfPresent(actionKind, forKey: .actionKind)
+        try container.encodeIfPresent(source, forKey: .source)
+        try container.encodeIfPresent(timeoutSeconds, forKey: .timeoutSeconds)
+        try container.encode(createdAt, forKey: .createdAt)
+    }
 }
 
 public enum AskStatus: String, Codable, Sendable {
@@ -95,6 +187,23 @@ public struct AskAnswer: Codable, Hashable, Sendable {
     public init(selected: [String] = [], text: String? = nil) {
         self.selected = selected; self.text = text
     }
+
+    enum CodingKeys: String, CodingKey {
+        case selected, text
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.selected = (try container.decodeIfPresent([String].self, forKey: .selected)) ?? []
+        self.text = try container.decodeIfPresent(String.self, forKey: .text)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(selected, forKey: .selected)
+        try container.encodeIfPresent(text, forKey: .text)
+    }
+
     /// "A, B" or "A, B; text" or "text" — the form Claude's AskUserQuestion expects.
     public var display: String {
         var parts = selected.joined(separator: ", ")
@@ -113,6 +222,26 @@ public struct AskResponse: Codable, Hashable, Sendable {
     public init(id: String, status: AskStatus, answers: [AskAnswer] = [], note: String? = nil) {
         self.id = id; self.status = status; self.answers = answers; self.note = note
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id, status, answers, note
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.status = try container.decode(AskStatus.self, forKey: .status)
+        self.answers = (try container.decodeIfPresent([AskAnswer].self, forKey: .answers)) ?? []
+        self.note = try container.decodeIfPresent(String.self, forKey: .note)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(status, forKey: .status)
+        try container.encode(answers, forKey: .answers)
+        try container.encodeIfPresent(note, forKey: .note)
+    }
 }
 
 /// Written by the app at launch to `~/.ask-island/endpoint.json` (0600); read by clients.
@@ -126,5 +255,11 @@ public struct AskEndpoint: Codable, Hashable, Sendable {
     public static var defaultURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".ask-island/endpoint.json")
+    }
+    public static var resolvedURL: URL {
+        if let env = ProcessInfo.processInfo.environment["ASK_ISLAND_ENDPOINT"], !env.isEmpty {
+            return URL(fileURLWithPath: env)
+        }
+        return defaultURL
     }
 }
