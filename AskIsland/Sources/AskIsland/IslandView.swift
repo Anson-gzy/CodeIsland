@@ -2,6 +2,41 @@ import SwiftUI
 import AppKit
 import AskIslandCore
 
+// MARK: - Animation & Transitions
+
+enum NotchAnimation {
+    /// 展开面板：微弹，有少许回弹感
+    static var open: Animation {
+        .spring(response: 0.42, dampingFraction: 0.82)
+    }
+    /// 收起面板：临界阻尼，无过冲（防止 NotchPanelShape 底边露出刘海）
+    static var close: Animation {
+        .spring(response: 0.38, dampingFraction: 1.0)
+    }
+}
+
+private struct BlurFadeModifier: ViewModifier {
+    let active: Bool
+    func body(content: Content) -> some View {
+        content
+            .blur(radius: active ? 5 : 0)
+            .opacity(active ? 0 : 1)
+    }
+}
+
+extension AnyTransition {
+    static var blurFade: AnyTransition {
+        .modifier(
+            active: BlurFadeModifier(active: true),
+            identity: BlurFadeModifier(active: false)
+        )
+    }
+
+    static var islandCard: AnyTransition {
+        .blurFade.combined(with: .scale(scale: 0.96, anchor: .top))
+    }
+}
+
 // MARK: - Notch Shapes & Glass Background
 
 struct NotchPanelShape: Shape {
@@ -124,13 +159,20 @@ struct ContentHeightPreferenceKey: PreferenceKey {
 
 // MARK: - Root Island View
 
+enum IslandState: Equatable {
+    case hidden
+    case collapsed
+    case expanded
+}
+
 struct IslandRootView: View {
     @ObservedObject var store: AskStore
     @ObservedObject var cardState: QuestionCardState
     /// Owns isCollapsed / pulseTrigger; observed so the island redraws when they change.
     @ObservedObject var controller: IslandWindowController
     var onFocusTextField: () -> Void
-    var onHeightChanged: (CGFloat) -> Void
+
+    @State private var measuredExpandedHeight: CGFloat = 0
 
     private var isCollapsed: Bool { controller.isCollapsed }
     private var pulseTrigger: Int { controller.pulseTrigger }
@@ -138,40 +180,132 @@ struct IslandRootView: View {
         Binding(get: { controller.isCollapsed }, set: { controller.isCollapsed = $0 })
     }
 
+    private var currentState: IslandState {
+        if store.pending.isEmpty {
+            return .hidden
+        } else if controller.isCollapsed {
+            return .collapsed
+        } else {
+            return .expanded
+        }
+    }
+
+    private var screen: NSScreen {
+        ScreenDetector.preferredScreen
+    }
+
+    private var notchHeight: CGFloat {
+        ScreenDetector.topBarHeight(for: screen)
+    }
+
+    private var notchWidth: CGFloat {
+        ScreenDetector.notchWidth(for: screen)
+    }
+
+    private var maxPanelHeight: CGFloat {
+        screen.frame.height * 0.7
+    }
+
+    private var islandWidth: CGFloat {
+        switch currentState {
+        case .hidden:
+            return notchWidth
+        case .collapsed:
+            return notchWidth + 24
+        case .expanded:
+            return 480
+        }
+    }
+
+    private var islandHeight: CGFloat {
+        switch currentState {
+        case .hidden:
+            return notchHeight
+        case .collapsed:
+            return notchHeight + CollapsedIslandView.stripHeight
+        case .expanded:
+            let h = measuredExpandedHeight > 0 ? measuredExpandedHeight : min(240, maxPanelHeight)
+            return min(max(h, notchHeight + 60), maxPanelHeight)
+        }
+    }
+
+    private var topExtension: CGFloat {
+        switch currentState {
+        case .hidden:
+            return 3
+        case .collapsed:
+            return 3
+        case .expanded:
+            return 14
+        }
+    }
+
+    private var bottomRadius: CGFloat {
+        switch currentState {
+        case .hidden:
+            return 8
+        case .collapsed:
+            return 12
+        case .expanded:
+            return 24
+        }
+    }
+
     var body: some View {
-        Group {
-            if store.pending.isEmpty {
-                Color.clear
-                    .frame(width: 0, height: 0)
-                    .onAppear {
-                        onHeightChanged(0)
-                    }
-            } else if isCollapsed {
-                CollapsedIslandView(
-                    count: store.pending.count,
-                    pulseTrigger: pulseTrigger,
-                    onExpand: {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            controller.isCollapsed = false
+        ZStack(alignment: .top) {
+            ZStack(alignment: .top) {
+                if currentState == .collapsed {
+                    CollapsedIslandView(
+                        count: store.pending.count,
+                        pulseTrigger: pulseTrigger,
+                        onExpand: {
+                            withAnimation(NotchAnimation.open) {
+                                controller.isCollapsed = false
+                            }
                         }
-                    }
-                )
-                .onAppear {
-                    onHeightChanged(ScreenDetector.notchHeight + CollapsedIslandView.stripHeight)
+                    )
+                    .transition(.islandCard)
+                } else if currentState == .expanded, let request = store.pending.first {
+                    ExpandedIslandView(
+                        request: request,
+                        store: store,
+                        cardState: cardState,
+                        isCollapsed: collapsedBinding,
+                        onFocusTextField: onFocusTextField,
+                        onHeightChanged: { height in
+                            measuredExpandedHeight = height
+                        }
+                    )
+                    .id(request.id)
+                    .transition(.islandCard)
                 }
-            } else if let request = store.pending.first {
-                ExpandedIslandView(
-                    request: request,
-                    store: store,
-                    cardState: cardState,
-                    isCollapsed: collapsedBinding,
-                    onFocusTextField: onFocusTextField,
-                    onHeightChanged: onHeightChanged
+            }
+            .frame(width: islandWidth, height: islandHeight, alignment: .top)
+            .clipped()
+            .background(
+                IslandBackground(
+                    shape: NotchPanelShape(
+                        topExtension: topExtension,
+                        bottomRadius: bottomRadius,
+                        minHeight: notchHeight
+                    ),
+                    expanded: currentState == .expanded,
+                    notchHeight: notchHeight
                 )
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if currentState == .collapsed {
+                    withAnimation(NotchAnimation.open) {
+                        controller.isCollapsed = false
+                    }
+                }
             }
         }
-        // The window is sized by the controller; pin content to the top edge under the notch.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .animation(currentState == .expanded ? NotchAnimation.open : NotchAnimation.close, value: currentState)
+        .animation(NotchAnimation.open, value: store.pending.first?.id)
+        .animation(NotchAnimation.open, value: measuredExpandedHeight)
     }
 }
 
@@ -184,46 +318,29 @@ struct CollapsedIslandView: View {
 
     @State private var pulseScale: CGFloat = 1.0
 
-    private var notchHeight: CGFloat {
-        ScreenDetector.notchHeight
-    }
-
-    private var notchWidth: CGFloat {
-        ScreenDetector.notchWidth + 24
-    }
-
     /// The hardware notch hides everything drawn at its height, so the badge sits in a strip below it.
     static let stripHeight: CGFloat = 26
 
     var body: some View {
-        let shape = NotchPanelShape(topExtension: 3, bottomRadius: 12, minHeight: notchHeight + Self.stripHeight)
-
-        ZStack {
-            // Black pill
-            shape.fill(.black)
-
-            // Orange badge, below the notch
-            HStack(spacing: 6) {
-                Spacer()
-                Text("\(count)")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(
-                        Capsule()
-                            .fill(Color.orange)
-                    )
-                    .scaleEffect(pulseScale)
-                Text("Needs you")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.85))
-                Spacer()
-            }
-            .frame(height: Self.stripHeight)
-            .frame(maxHeight: .infinity, alignment: .bottom)
+        HStack(spacing: 6) {
+            Spacer()
+            Text("\(count)")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule()
+                        .fill(Color.orange)
+                )
+                .scaleEffect(pulseScale)
+            Text("Needs you")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.85))
+            Spacer()
         }
-        .frame(width: notchWidth, height: notchHeight + Self.stripHeight)
+        .frame(height: Self.stripHeight)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .contentShape(Rectangle())
         .onTapGesture {
             onExpand()
@@ -276,7 +393,6 @@ struct ExpandedIslandView: View {
     }
 
     var body: some View {
-        let shape = NotchPanelShape(topExtension: 14, bottomRadius: 24, minHeight: notchHeight)
         let totalFittedHeight = measuredContentHeight > 0
             ? min(measuredContentHeight + notchHeight + 16, maxPanelHeight)
             : min(240, maxPanelHeight)
@@ -317,7 +433,7 @@ struct ExpandedIslandView: View {
                 Spacer()
 
                 Button(action: {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    withAnimation(NotchAnimation.close) {
                         isCollapsed = true
                     }
                 }) {
@@ -369,13 +485,6 @@ struct ExpandedIslandView: View {
         }
         .frame(width: 480)
         .frame(height: max(totalFittedHeight, notchHeight + 60))
-        .background(
-            IslandBackground(
-                shape: shape,
-                expanded: true,
-                notchHeight: notchHeight
-            )
-        )
         .onPreferenceChange(ContentHeightPreferenceKey.self) { height in
             if height > 0 {
                 self.measuredContentHeight = height
