@@ -133,8 +133,6 @@ final class ThickGlassView: NSGlassEffectView {
 @available(macOS 26.0, *)
 struct ClearLensGlass: NSViewRepresentable {
     var cornerRadius: CGFloat
-    /// Points from the top that stay solid black (notch + title row).
-    var solidHeight: CGFloat
     var height: CGFloat
     /// Glass hidden above the screen edge (the pushed-up top corners); the tint is laid out on the rest.
     var topInset: CGFloat = 0
@@ -191,12 +189,11 @@ struct ClearLensGlass: NSViewRepresentable {
         func at(_ y: Double) -> NSNumber { NSNumber(value: (Double(topInset) + y * Double(h)) / Double(total)) }
         // Proportions measured from the reference video: solid black over the top ~47% of the panel, then
         // a long, soft fade (half linear, half smoothstep) that is gone by ~90% of the height, leaving
-        // milky glass at the bottom. A short capsule (the collapsed pill) stays black down to `solidHeight`.
-        let f0 = max(0.47, min(solidHeight / h, 1))
-        let f1 = f0 + 0.43 * (1 - f0) / 0.53
-        // While the capsule is still small (pill, or mid-morph) it stays dark like the reference; the clear,
-        // milky lower part only opens up as it grows toward panel size.
-        let reveal = min(max((h - 180) / 220, 0), 1)
+        // milky glass at the bottom. Pure proportions, whatever the height: a short notify card fades the
+        // same way as a tall question card (mid-morph darkness is the black curtain's job in IslandSurface).
+        let f0 = 0.47
+        let f1 = 0.9
+        let reveal = 1.0
         let steps = 14
         var blackColors: [CGColor] = [NSColor.black.cgColor]
         var blackStops: [NSNumber] = [0]
@@ -240,7 +237,6 @@ struct IslandSurface: View, Animatable {
     var width: CGFloat
     var height: CGFloat
     var glass: CGFloat
-    var solidHeight: CGFloat
     var notchHeight: CGFloat
 
     static let panelRadius: CGFloat = 40
@@ -272,7 +268,7 @@ struct IslandSurface: View, Animatable {
         ZStack(alignment: .top) {
             if #available(macOS 26.0, *), g > 0.001 {
                 // Top corners pushed above the screen edge: only the bottom corners (and their rim) show.
-                ClearLensGlass(cornerRadius: radius, solidHeight: solidHeight, height: height, topInset: radius * 2)
+                ClearLensGlass(cornerRadius: radius, height: height, topInset: radius * 2)
                     .frame(width: width, height: height + radius * 2)
                     .offset(y: -radius * 2)
                     .opacity(g)
@@ -384,6 +380,9 @@ struct IslandRootView: View {
     @State private var measuredExpandedHeight: CGFloat = 0
     /// Pointer over the collapsed pill: it swells a little (wider and a bit taller) as a hover cue.
     @State private var pillHovered = false
+    /// Hiding (last request answered) uses the same shrink as collapsing: the surface stays opaque and
+    /// shrinks into the notch as black, and only fades out once it has settled there.
+    @State private var hiddenSettled = true
 
     private var isCollapsed: Bool { controller.isCollapsed }
     private var pulseTrigger: Int { controller.pulseTrigger }
@@ -456,10 +455,9 @@ struct IslandRootView: View {
                 width: surfaceSize.width,
                 height: surfaceSize.height,
                 glass: glassAmount,
-                solidHeight: notchHeight + 40,
                 notchHeight: notchHeight
             )
-            .opacity(currentState == .hidden ? 0 : 1)
+            .opacity(currentState == .hidden && hiddenSettled ? 0 : 1)
             .allowsHitTesting(false)
 
             ZStack(alignment: .top) {
@@ -507,8 +505,17 @@ struct IslandRootView: View {
         .animation(currentState == .expanded ? NotchAnimation.open : NotchAnimation.close, value: currentState)
         .onChange(of: currentState) { _, state in
             if state != .collapsed { pillHovered = false }
+            if state != .hidden {
+                hiddenSettled = false  // armed before the next hide, so its first frame is already opaque
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    guard currentState == .hidden else { return }
+                    withAnimation(.easeOut(duration: 0.15)) { hiddenSettled = true }
+                }
+            }
         }
-        .animation(NotchAnimation.open, value: store.pending.first?.id)
+        // Answering the last request also changes the id (to nil): that is a close, not a content swap.
+        .animation(currentState == .hidden ? NotchAnimation.close : NotchAnimation.open, value: store.pending.first?.id)
         .animation(NotchAnimation.open, value: measuredExpandedHeight)
         .onChange(of: hitSize, initial: true) { _, size in
             controller.hitSize = size

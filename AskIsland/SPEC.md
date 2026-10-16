@@ -128,7 +128,9 @@ The island grows out of the notch and shrinks back into it; the window never res
   hidden = notchWidth × notchHeight (faded out); collapsed = notchWidth + 24 × notchHeight + 22 (plain black
   notch extension, badge below the notch); expanded = 480 × measured content height (clamped to the window).
   Curves and content transitions: see "Motion" under Visual style.
-- First arrival: hidden → expanded (grows from the notch). Resolving the last request: expanded → hidden.
+- First arrival: hidden → expanded (grows from the notch). Resolving the last request: expanded → hidden with
+  the same shrink as collapsing (close spring, black curtain, into notch size, fully opaque); the surface only
+  fades out 0.6 s later, once it sits inside the notch.
 
 ## Visual style (reference: a Liquid Glass "New Message" compose sheet)
 
@@ -153,10 +155,10 @@ title, detail, questions and options are the agent's words, shown verbatim in wh
   as the thin bright line along the bottom; thinned through its private `CASDFKeyFillHighlightEffect`:
   `keyHeight` / `fillHeight` 1.5 (default 3.5), `diffuseHeightScale` 4 (default 8).
 - Tint inside the glass, as fractions of the visible height (measured from the reference video, mapped past
-  the hidden top inset): solid black over the top 47% (or down to notch height + 40, whichever is lower), then
+  the hidden top inset): solid black over the top 47%, then
   a soft fade (half linear, half smoothstep, 14 stops) ending at ~90%: black alpha 1 → 0. A milky white haze is
-  its own gradient from where the fade starts to the bottom edge, easing in (t^1.2) up to 0.3. The fade only
-  opens up as the slab grows (`reveal` = (height − 180) / 220, clamped), so mid-morph frames stay dark.
+  its own gradient from where the fade starts to the bottom edge, easing in (t^1.2) up to 0.3. Pure proportions at any
+  height (a short notify card fades like a tall one); mid-morph darkness comes from the black curtain below.
 - Text (not buttons or fields) gets a soft dark halo (`textHalo`: black 0.45, radius 2.5) for legibility.
 
 **Collapsed**
