@@ -9,7 +9,7 @@ public enum AskClientError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .notRunning:
-            return "AskIsland 没在运行"
+            return "AskIsland is not running"
         case .serverError(let code, let msg):
             return "Server error (\(code)): \(msg)"
         case .invalidResponse:

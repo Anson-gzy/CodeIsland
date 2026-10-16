@@ -435,7 +435,7 @@ final class CoreTests: XCTestCase {
         }
 
         XCTAssertEqual(parsed.request.kind, .question)
-        XCTAssertEqual(parsed.request.title, "Claude 在问你")
+        XCTAssertEqual(parsed.request.title, "Claude has a question")
         XCTAssertEqual(parsed.request.questions.count, 2)
         XCTAssertFalse(parsed.request.questions[0].multiSelect)
         XCTAssertTrue(parsed.request.questions[1].multiSelect)
@@ -519,7 +519,7 @@ final class CoreTests: XCTestCase {
 
         XCTAssertEqual(decision["behavior"] as? String, "deny")
         let message = decision["message"] as? String ?? ""
-        XCTAssertTrue(message.contains("用户没有在 AskIsland 回答"))
+        XCTAssertTrue(message.contains("The user did not answer in AskIsland"))
         XCTAssertTrue(message.contains("User cancelled"))
     }
 
@@ -539,15 +539,15 @@ final class CoreTests: XCTestCase {
             return
         }
 
-        XCTAssertEqual(parsed.request.title, "Claude 想用 Bash")
+        XCTAssertEqual(parsed.request.title, "Claude wants to use Bash")
         XCTAssertEqual(parsed.request.detail, "rm -rf /tmp/build")
-        XCTAssertEqual(parsed.request.questions.first?.options.map(\.label), ["允许", "拒绝"])
+        XCTAssertEqual(parsed.request.questions.first?.options.map(\.label), ["Allow", "Deny"])
 
         // 允许 -> allow
         let allowResponse = AskResponse(
             id: parsed.request.id,
             status: .answered,
-            answers: [AskAnswer(selected: ["允许"])]
+            answers: [AskAnswer(selected: ["Allow"])]
         )
         guard let formattedAllow = ClaudeHook.formatResponse(request: parsed.request, response: allowResponse, rawInput: parsed.rawInput),
               let dataAllow = formattedAllow.data(using: .utf8),
@@ -562,7 +562,7 @@ final class CoreTests: XCTestCase {
         let denyResponse = AskResponse(
             id: parsed.request.id,
             status: .answered,
-            answers: [AskAnswer(selected: ["拒绝"])]
+            answers: [AskAnswer(selected: ["Deny"])]
         )
         guard let formattedDeny = ClaudeHook.formatResponse(request: parsed.request, response: denyResponse, rawInput: parsed.rawInput),
               let dataDeny = formattedDeny.data(using: .utf8),

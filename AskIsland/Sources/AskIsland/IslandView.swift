@@ -67,8 +67,8 @@ struct ClearLensGlass: NSViewRepresentable {
         let tint = NSView()
         tint.wantsLayer = true
         let gradient = CAGradientLayer()
-        gradient.colors = [1, 1, 0.9, 0.8, 0.7].map { NSColor.black.withAlphaComponent($0).cgColor }
-        gradient.locations = [0, 0.35, 0.6, 0.85, 1]
+        gradient.colors = [1, 1, 0.85, 0.55, 0.22, 0].map { NSColor.black.withAlphaComponent($0).cgColor }
+        gradient.locations = [0, 0.42, 0.55, 0.7, 0.86, 1]
         gradient.startPoint = CGPoint(x: 0.5, y: 1)
         gradient.endPoint = CGPoint(x: 0.5, y: 0)
         tint.layer = gradient
@@ -215,7 +215,7 @@ struct CollapsedIslandView: View {
                             .fill(Color.orange)
                     )
                     .scaleEffect(pulseScale)
-                Text("待你处理")
+                Text("Needs you")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.white.opacity(0.85))
                 Spacer()
@@ -357,6 +357,9 @@ struct ExpandedIslandView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 20)
+                // The lower card sits on clear glass; a tight dark halo keeps text legible over any wallpaper.
+                .shadow(color: .black.opacity(0.9), radius: 1.5)
+                .shadow(color: .black.opacity(0.6), radius: 6)
                 .background(
                     GeometryReader { geo in
                         Color.clear.preference(key: ContentHeightPreferenceKey.self, value: geo.size.height + 40)

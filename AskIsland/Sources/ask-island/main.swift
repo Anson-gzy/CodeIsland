@@ -281,7 +281,7 @@ func runClientRequest(_ request: AskRequest, isJson: Bool) async {
         }
     } catch let error as AskClientError {
         if error == .notRunning {
-            fputs("AskIsland 没在运行\n", stderr)
+            fputs("AskIsland is not running\n", stderr)
             exit(2)
         } else {
             fputs("\(error.localizedDescription)\n", stderr)

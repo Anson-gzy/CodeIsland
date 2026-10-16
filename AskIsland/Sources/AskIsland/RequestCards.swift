@@ -111,7 +111,7 @@ struct QuestionCardView: View {
                 Button(action: {
                     store.resolve(request.id, AskResponse(id: request.id, status: .declined, answers: []))
                 }) {
-                    Text("拒绝回答")
+                    Text("Decline")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.white.opacity(0.75))
                         .padding(.horizontal, 14)
@@ -128,7 +128,7 @@ struct QuestionCardView: View {
                 Button(action: {
                     cardState.submit(for: request, store: store)
                 }) {
-                    Text("提交")
+                    Text("Submit")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 18)
@@ -191,7 +191,7 @@ struct QuestionCardView: View {
 
             // Text Field
             if question.allowText {
-                let placeholder = question.options.isEmpty ? "输入回答" : "其他（可选）"
+                let placeholder = question.options.isEmpty ? "Type your answer" : "Other (optional)"
                 let textBinding = Binding<String>(
                     get: { cardState.textAnswers[index] ?? "" },
                     set: { cardState.textAnswers[index] = $0 }
@@ -309,13 +309,13 @@ struct ActionCardView: View {
 
             // Password hint if password kind
             if request.actionKind == .password {
-                Text("密码请在它提示的地方输入，不要发给 agent")
+                Text("Type the password where it asks for it. Never send it to the agent.")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.orange)
             }
 
             // Note field
-            TextField("", text: $note, prompt: Text("备注（可选）").foregroundColor(.white.opacity(0.4)))
+            TextField("", text: $note, prompt: Text("Note (optional)").foregroundColor(.white.opacity(0.4)))
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .foregroundColor(.white)
@@ -332,7 +332,7 @@ struct ActionCardView: View {
                     let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
                     store.resolve(request.id, AskResponse(id: request.id, status: .declined, answers: [], note: trimmed.isEmpty ? nil : trimmed))
                 }) {
-                    Text("做不了")
+                    Text("Can't do it")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.white.opacity(0.75))
                         .padding(.horizontal, 14)
@@ -350,7 +350,7 @@ struct ActionCardView: View {
                     let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
                     store.resolve(request.id, AskResponse(id: request.id, status: .done, answers: [], note: trimmed.isEmpty ? nil : trimmed))
                 }) {
-                    Text("我已完成")
+                    Text("Done")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 18)
@@ -398,7 +398,7 @@ struct NotifyCardView: View {
                 Button(action: {
                     store.resolve(request.id, AskResponse(id: request.id, status: .dismissed, answers: [], note: nil))
                 }) {
-                    Text("知道了")
+                    Text("Got it")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 18)

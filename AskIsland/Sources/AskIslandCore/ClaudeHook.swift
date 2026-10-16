@@ -55,14 +55,14 @@ public enum ClaudeHook {
 
                 let req = AskRequest(
                     kind: .question,
-                    title: "Claude 在问你",
+                    title: "Claude has a question",
                     questions: questions,
                     source: source
                 )
                 return (req, dict)
             } else {
                 // Any other tool
-                let title = "Claude 想用 \(toolName)"
+                let title = "Claude wants to use \(toolName)"
                 let detail: String?
                 let lowerTool = toolName.lowercased()
 
@@ -80,8 +80,8 @@ public enum ClaudeHook {
                 }
 
                 let question = AskQuestion(
-                    question: "允许吗？",
-                    options: [AskOption(label: "允许"), AskOption(label: "拒绝")],
+                    question: "Allow this?",
+                    options: [AskOption(label: "Allow"), AskOption(label: "Deny")],
                     multiSelect: false,
                     allowText: false
                 )
@@ -151,9 +151,9 @@ public enum ClaudeHook {
                 let note = response.note
                 let message: String
                 if let note = note, !note.isEmpty {
-                    message = "用户没有在 AskIsland 回答：\(note)"
+                    message = "The user did not answer in AskIsland: \(note)"
                 } else {
-                    message = "用户没有在 AskIsland 回答"
+                    message = "The user did not answer in AskIsland"
                 }
 
                 let output: [String: Any] = [
@@ -170,7 +170,7 @@ public enum ClaudeHook {
         } else {
             // Any other tool
             let isAllowed = response.status == .answered &&
-                (response.answers.first?.selected.contains("允许") == true)
+                (response.answers.first?.selected.contains("Allow") == true)
 
             if isAllowed {
                 let output: [String: Any] = [
@@ -186,9 +186,9 @@ public enum ClaudeHook {
                 let note = response.note
                 let message: String
                 if let note = note, !note.isEmpty {
-                    message = "用户没有在 AskIsland 允许：\(note)"
+                    message = "The user did not allow it in AskIsland: \(note)"
                 } else {
-                    message = "用户没有在 AskIsland 允许"
+                    message = "The user did not allow it in AskIsland"
                 }
 
                 let output: [String: Any] = [
