@@ -88,4 +88,47 @@ ask-island mcp       # stdio MCP server (MCPServer)
 - `hook`: app not running or the event maps to nil → print nothing, exit 0 (Claude falls back to its own UI).
   Never exit non-zero.
 
-## App (Sources/AskIsland) — see the app brief
+## App (Sources/AskIsland)
+
+Agent app (`NSApp.setActivationPolicy(.accessory)`, no Dock icon). At launch: one `AskStore`, one `AskServer`
+started on it, the island window, a status item. Reuse, by copying into this target (the old app is not a
+dependency): notch geometry from `../Sources/CodeIsland/ScreenDetector.swift`; `NotchPanelShape`,
+`IslandBackground` and `ClearLensGlass` (NSGlassEffectView, private `_variant` 11, black fade in its contentView)
+from `../Sources/CodeIsland/NotchPanelView.swift`; the panel setup in `showPanel()` of
+`../Sources/CodeIsland/PanelWindowController.swift` (borderless nonactivating `KeyablePanel`, level mainMenu+2,
+clear background, all spaces + full-screen auxiliary). Screen: the one with a notch, else the main screen.
+
+**States**
+- Nothing pending: nothing visible; the window ignores mouse events so the menu bar works underneath.
+- Pending, expanded (default when something arrives): island hangs from the notch, 480 pt wide, height fits the
+  card up to 70% of the screen (card scrolls beyond), expanded glass background like CodeIsland. Shows the oldest
+  pending request. Header: agent name (`source.agent`, else "Agent") · last path component of `source.cwd` ·
+  "1/3" when more than one, and a chevron that collapses.
+- Pending, collapsed: a black pill the notch's width plus small wings, showing an orange count badge; click
+  expands. A new arrival while collapsed keeps it collapsed and pulses the badge once.
+- Each new arrival plays `NSSound(named: "Glass")` once. Arrival never steals focus.
+
+**Question card**: title (bold), detail (secondary, selectable), then per question: header chip, question text,
+option rows (label, small description). Single-select = radio (picking replaces), multi = checkboxes. A text field
+when `allowText` (placeholder "其他（可选）", or "输入回答" when there are no options). "提交" is enabled when
+every question has a selection or non-empty text → `.answered` with one AskAnswer per question (selected labels
+in option order, trimmed text or nil). "拒绝回答" → `.declined`. Keys when no text field has focus: 1–9 toggle
+options of the first question still unanswered, Return submits, Esc collapses.
+
+**Action card**: SF Symbol per actionKind (computer `desktopcomputer`, phone `iphone`, password `key.fill`,
+login `person.badge.key`, other/nil `hand.raised`), title, detail (steps, selectable), note field "备注（可选）",
+primary "我已完成" → `.done` with note, secondary "做不了" → `.declined` with note. Password kind adds the line
+"密码请在它提示的地方输入，不要发给 agent". No password field anywhere in the app.
+
+**Notify card**: title, detail, "知道了" → `.dismissed`. (Store drops it after 15 s anyway.)
+
+**Focus**: text fields must take typing including Chinese IME: clicking makes the panel key and focusing a
+text field activates the app. After a resolve leaves nothing pending, reactivate the app that was frontmost
+before.
+
+**Status item** (`bubble.left.and.exclamationmark.bubble.right`): "测试：提问", "测试：让我操作", "退出".
+The test items submit sample requests straight into the store. If the server failed to start, the item shows a
+warning symbol and the menu says why.
+
+**`--demo`** launch argument: submits a two-question request (one single, one multi-select with descriptions),
+then a phone action, then a notify, so screenshots show every card.
