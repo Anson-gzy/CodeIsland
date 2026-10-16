@@ -145,15 +145,16 @@ look), styled like a macOS 26 compose sheet. All UI text is English.
 
 **Capsule**
 - `ClearLensGlass` (`_variant` 11), all four corners round, top edge on the screen's top edge, corner radius
-  `min(56, height/2)`: on this glass the refracting rim is as wide as the corner radius, so a large radius is
+  `min(64, height/2)`: on this glass the refracting rim is as wide as the corner radius, so a large radius is
   what gives the thick lensing border on the sides and bottom.
 - Thick, slightly frosted slab: `ThickGlassView` retunes the backdrop's private `glassBackground` filter on
-  every layout: `inputBlurRadius` 5 (blur opacities 1), `inputInnerRefractionHeight` 48,
-  `inputInnerRefractionAmount` -75 (variant 11 ships 0 / 20 / -50). The white specular rim (layer `@3`) stays
+  every layout: `inputBlurRadius` 5 (blur opacities 1), inner refraction height 86 / amount -110, outer refraction
+  height 36 / amount 22 (variant 11 ships blur 0, inner 20 / -50, outer 16 / 10). The white specular rim (layer `@3`) stays
   on: it is what makes the edge read as thick glass, as in the "Search or Ask" reference.
 - Tint inside the glass, as fractions of the capsule height (measured from the reference video): solid black
   over the top 47% (or down to notch height + 40, whichever is lower), then a soft fade (half linear, half
-  smoothstep, 14 stops) ending at ~90%: black alpha 1 → 0.06, while a milky white haze rises 0 → 0.24. The
+  smoothstep, 14 stops) ending at ~90%: black alpha 1 → 0.06. A milky white haze is its own gradient from where the fade starts to the
+  bottom edge, easing in (t^1.6) up to 0.16, so the white keeps building toward the bottom. The
   fade only opens up as the capsule grows (`reveal` = (height − 180) / 220, clamped), so the pill and the
   mid-morph frames stay dark like the reference. Text keeps its tight dark shadow.
 - The same capsule is the collapsed pill (notch width + 90 by notch height + 26): at that size it is black

@@ -52,8 +52,10 @@ extension AnyTransition {
 @available(macOS 26.0, *)
 final class ThickGlassView: NSGlassEffectView {
     static let blurRadius = 5.0
-    static let refractionHeight = 48.0
-    static let refractionAmount = -75.0
+    static let refractionHeight = 86.0
+    static let refractionAmount = -110.0
+    static let outerRefractionHeight = 36.0
+    static let outerRefractionAmount = 22.0
 
     override func layout() {
         super.layout()
@@ -68,6 +70,8 @@ final class ThickGlassView: NSGlassEffectView {
             for i in 0..<4 { layer.setValue(1.0, forKeyPath: k + "inputBlurOpacity\(i)") }
             layer.setValue(Self.refractionHeight, forKeyPath: k + "inputInnerRefractionHeight")
             layer.setValue(Self.refractionAmount, forKeyPath: k + "inputInnerRefractionAmount")
+            layer.setValue(Self.outerRefractionHeight, forKeyPath: k + "inputOuterRefractionHeight")
+            layer.setValue(Self.outerRefractionAmount, forKeyPath: k + "inputOuterRefractionAmount")
         }
         layer.sublayers?.forEach { tune($0) }
     }
@@ -107,6 +111,8 @@ struct ClearLensGlass: NSViewRepresentable {
         }
     }
 
+    static let milkMax = 0.16
+
     func makeNSView(context: Context) -> NSGlassEffectView {
         let glass = ThickGlassView()
         glass.style = .clear
@@ -139,24 +145,30 @@ struct ClearLensGlass: NSViewRepresentable {
         let steps = 14
         var blackColors: [CGColor] = [NSColor.black.cgColor]
         var blackStops: [NSNumber] = [0]
-        var milkColors: [CGColor] = [NSColor.white.withAlphaComponent(0).cgColor]
         for i in 0...steps {
             let t = Double(i) / Double(steps)
             let eased = 0.5 * t + 0.5 * t * t * (3 - 2 * t)
             let y = f0 + (f1 - f0) * t
             blackStops.append(NSNumber(value: y))
             blackColors.append(NSColor.black.withAlphaComponent(1 - 0.94 * eased * reveal).cgColor)
-            milkColors.append(NSColor.white.withAlphaComponent(0.24 * eased * reveal).cgColor)
         }
         blackStops.append(1)
         blackColors.append(NSColor.black.withAlphaComponent(1 - 0.94 * reveal).cgColor)
-        milkColors.append(NSColor.white.withAlphaComponent(0.24 * reveal).cgColor)
+        // The milky haze is its own gradient: it starts where the black starts fading and keeps building all
+        // the way to the bottom edge (ease-in), so the white is faint mid-panel and densest at the bottom.
+        var milkColors: [CGColor] = [NSColor.white.withAlphaComponent(0).cgColor]
+        var milkStops: [NSNumber] = [0]
+        for i in 0...steps {
+            let t = Double(i) / Double(steps)
+            milkStops.append(NSNumber(value: f0 + (1 - f0) * t))
+            milkColors.append(NSColor.white.withAlphaComponent(Self.milkMax * pow(t, 1.6) * reveal).cgColor)
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         tint.black.colors = blackColors
         tint.black.locations = blackStops
         tint.milk.colors = milkColors
-        tint.milk.locations = blackStops
+        tint.milk.locations = milkStops
         CATransaction.commit()
         tint.needsLayout = true
         glass.needsLayout = true
@@ -171,7 +183,7 @@ struct IslandGlass: View, Animatable {
     var height: CGFloat
     var solidHeight: CGFloat
 
-    static let maxRadius: CGFloat = 56
+    static let maxRadius: CGFloat = 64
 
     var animatableData: AnimatablePair<CGFloat, CGFloat> {
         get { AnimatablePair(width, height) }
