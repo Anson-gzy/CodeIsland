@@ -4,9 +4,9 @@ import AskIslandCore
 func usage() -> Never {
     let text = """
     Usage:
-      ask-island ask "<question>" [-o "<label>[::<description>]"]... [--multi] [--no-text] [--title T] [--detail D] [--header H] [--timeout S] [--agent A] [--json]
-      ask-island do "<title>" [--detail D] [--kind computer|phone|password|login|other] [--timeout S] [--agent A] [--json]
-      ask-island notify "<title>" [--detail D] [--agent A]
+      ask-island ask "<question>" [-o "<label>[::<description>]"]... [--multi] [--no-text] [--title T] [--detail D] [--header H] [--timeout S] [--agent A] [--session NAME] [--json]
+      ask-island do "<title>" [--detail D] [--kind computer|phone|password|login|other] [--timeout S] [--agent A] [--session NAME] [--json]
+      ask-island notify "<title>" [--detail D] [--agent A] [--session NAME]
       ask-island hook
 
     Titles, details and options are shown verbatim: write them in the language you use with the user.
@@ -14,6 +14,16 @@ func usage() -> Never {
     """
     fputs(text + "\n", stderr)
     exit(64)
+}
+
+/// The calling session's name: --session, else ASK_ISLAND_SESSION, else the title of the Claude Code session
+/// this shell belongs to.
+func resolveSessionName(flag: String?) -> String? {
+    if let flag, !flag.isEmpty { return flag }
+    let env = ProcessInfo.processInfo.environment
+    if let name = env["ASK_ISLAND_SESSION"], !name.isEmpty { return name }
+    if let id = env["CLAUDE_CODE_SESSION_ID"] { return SessionTitle.claude(sessionId: id) }
+    return nil
 }
 
 func resolveAgent(flag: String?) -> String {
@@ -53,6 +63,7 @@ case "ask":
     var header: String?
     var timeout: Int?
     var agentFlag: String?
+    var sessionFlag: String?
     var isJson = false
 
     var i = 0
@@ -94,6 +105,10 @@ case "ask":
             i += 1
             guard i < rest.count else { usage() }
             agentFlag = rest[i]
+        case "--session":
+            i += 1
+            guard i < rest.count else { usage() }
+            sessionFlag = rest[i]
         case "--json":
             isJson = true
         default:
@@ -111,7 +126,7 @@ case "ask":
         title: finalTitle,
         detail: detail,
         questions: [q],
-        source: AskSource(agent: agent, cwd: cwd, session: nil),
+        source: AskSource(agent: agent, cwd: cwd, session: nil, sessionName: resolveSessionName(flag: sessionFlag)),
         timeoutSeconds: timeout
     )
 
@@ -127,6 +142,7 @@ case "do":
     var actionKind: ActionKind?
     var timeout: Int?
     var agentFlag: String?
+    var sessionFlag: String?
     var isJson = false
 
     var i = 0
@@ -149,6 +165,10 @@ case "do":
             i += 1
             guard i < rest.count else { usage() }
             agentFlag = rest[i]
+        case "--session":
+            i += 1
+            guard i < rest.count else { usage() }
+            sessionFlag = rest[i]
         case "--json":
             isJson = true
         default:
@@ -164,7 +184,7 @@ case "do":
         title: actionTitle,
         detail: detail,
         actionKind: actionKind,
-        source: AskSource(agent: agent, cwd: cwd, session: nil),
+        source: AskSource(agent: agent, cwd: cwd, session: nil, sessionName: resolveSessionName(flag: sessionFlag)),
         timeoutSeconds: timeout
     )
 
@@ -178,6 +198,7 @@ case "notify":
     let notifyTitle = rest.removeFirst()
     var detail: String?
     var agentFlag: String?
+    var sessionFlag: String?
 
     var i = 0
     while i < rest.count {
@@ -191,6 +212,10 @@ case "notify":
             i += 1
             guard i < rest.count else { usage() }
             agentFlag = rest[i]
+        case "--session":
+            i += 1
+            guard i < rest.count else { usage() }
+            sessionFlag = rest[i]
         default:
             usage()
         }
@@ -203,7 +228,7 @@ case "notify":
         kind: .notify,
         title: notifyTitle,
         detail: detail,
-        source: AskSource(agent: agent, cwd: cwd, session: nil)
+        source: AskSource(agent: agent, cwd: cwd, session: nil, sessionName: resolveSessionName(flag: sessionFlag))
     )
 
     await runClientRequest(req, isJson: false)

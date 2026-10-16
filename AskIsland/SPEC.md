@@ -44,7 +44,8 @@ dead, or the connection is refused. No request timeout of its own (a question ma
 **ClaudeHook** (pure functions, no I/O): Claude Code hook stdin JSON → AskRequest?, and AskResponse → stdout JSON.
 - `PermissionRequest` + tool `AskUserQuestion`: kind question, title "Claude has a question", one AskQuestion per
   `tool_input.questions[]` (header, question, options label/description, multiSelect), allowText true;
-  source agent "claude", cwd, session_id. Answered → `{"hookSpecificOutput":{"hookEventName":"PermissionRequest",
+  source agent "claude", cwd, session_id, sessionName = the session's title (last `custom-title` line of
+  `transcript_path`, read backwards in 256 KB chunks; else found by session id under `~/.claude/projects`). Answered → `{"hookSpecificOutput":{"hookEventName":"PermissionRequest",
   "decision":{"behavior":"allow","updatedInput":{...original tool_input, "questions": original questions,
   "answers": {<question text>: <AskAnswer.display>}}}}}`. Duplicate question texts get keys "text_2", "text_3".
   Declined / timeout / dismissed → `"decision":{"behavior":"deny","message":"The user did not answer in AskIsland"}` (append
@@ -69,7 +70,8 @@ ask-island hook      # Claude Code hook: stdin JSON → stdout JSON (ClaudeHook)
 - Exit: 0 answered/done/notified, 3 declined (note on stderr), 4 timeout, 5 dismissed, 2 app not running
   (stderr `AskIsland is not running`), 64 usage error. `--json` prints the AskResponse JSON instead.
 - source: cwd = current dir; agent = --agent, else env `ASK_ISLAND_AGENT`, else "claude" if `CLAUDECODE=1`,
-  "codex" if any `CODEX_` env var, else "cli".
+  "codex" if any `CODEX_` env var, else "cli"; sessionName = --session, else env `ASK_ISLAND_SESSION`, else the
+  title of the Claude Code session in `CLAUDE_CODE_SESSION_ID`.
 - `hook`: app not running or the event maps to nil → print nothing, exit 0 (Claude falls back to its own UI).
   Never exit non-zero.
 
@@ -85,7 +87,7 @@ Screen: the one with a notch, else the main screen.
 - Nothing pending: nothing visible; the window ignores mouse events so the menu bar works underneath.
 - Pending, expanded (default when something arrives): island hangs from the notch, 480 pt wide, height fits the
   card up to 70% of the screen (card scrolls beyond), expanded glass background like CodeIsland. Shows the oldest
-  pending request. Header: agent name (`source.agent`, else "Agent") · last path component of `source.cwd` ·
+  pending request. Header: session name (`source.sessionName`, else `source.agent`, else "Agent") · last path component of `source.cwd` ·
   "1/3" when more than one, and a chevron that collapses.
 - Pending, collapsed: a black pill the notch's width plus 32 pt wings on each side, showing the first request
   in one line; click expands. A new arrival while collapsed keeps it collapsed and pulses the glyph once.
@@ -191,7 +193,7 @@ title, detail, questions and options are the agent's words, shown verbatim in wh
 - Content is inset 28 pt from the left/right edges and 24 pt from the bottom so nothing sits on the rim.
 
 **Layout, like the compose sheet**
-- Title bar row under the notch: agent name 15 pt semibold white on the left (the sheet's "New Message"),
+- Title bar row under the notch: session name (else agent) 15 pt semibold white, one line, on the left (the sheet's "New Message"),
   folder and "1/3" after it in secondary white (0.55); on the right a collapse button drawn as a small
   circular glass-like control (24 pt circle, white 0.12 fill, `chevron.up` 11 pt).
 - Below it the request title as a large heading: 20 pt semibold white, then the detail in 13 pt white 0.7.

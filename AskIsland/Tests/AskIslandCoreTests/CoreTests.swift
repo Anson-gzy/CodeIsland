@@ -675,4 +675,45 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(answersDict["Are you sure?"], "Yes")
         XCTAssertEqual(answersDict["Are you sure?_2"], "Positive")
     }
+
+    // MARK: - Session title
+
+    private func writeTranscript(_ lines: [String]) throws -> String {
+        let path = NSTemporaryDirectory() + "askisland-\(UUID().uuidString).jsonl"
+        try (lines.joined(separator: "\n") + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        return path
+    }
+
+    func testSessionTitleTakesTheLastCustomTitleAcrossChunks() throws {
+        // Two titles with ~600 KB of other lines between and after: the reader goes backwards across 256 KB
+        // chunk borders and must return the later title.
+        let filler = String(repeating: "{\"type\":\"user\",\"message\":\"" + String(repeating: "x", count: 900) + "\"}\n", count: 700)
+        let path = try writeTranscript([
+            #"{"type":"custom-title","customTitle":"Old name","sessionId":"s"}"#,
+            filler,
+            #"{"type":"custom-title","customTitle":"Liquid glass work","sessionId":"s"}"#,
+            filler,
+        ])
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        XCTAssertEqual(SessionTitle.claude(transcriptPath: path), "Liquid glass work")
+    }
+
+    func testSessionTitleMissing() throws {
+        let path = try writeTranscript([#"{"type":"user","message":"hi"}"#])
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        XCTAssertNil(SessionTitle.claude(transcriptPath: path))
+        XCTAssertNil(SessionTitle.claude(transcriptPath: "/nonexistent/x.jsonl"))
+    }
+
+    func testClaudeHookCarriesSessionName() throws {
+        let path = try writeTranscript([#"{"type":"custom-title","customTitle":"Deploy prep","sessionId":"s"}"#])
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let json = """
+        {"hook_event_name": "PermissionRequest", "session_id": "s", "cwd": "/tmp/p", "transcript_path": "\(path)",
+         "tool_name": "AskUserQuestion",
+         "tool_input": {"questions": [{"question": "Ship it?", "options": [{"label": "Yes"}, {"label": "No"}]}]}}
+        """
+        let parsed = try XCTUnwrap(ClaudeHook.parseRequest(from: json))
+        XCTAssertEqual(parsed.request.source?.sessionName, "Deploy prep")
+    }
 }

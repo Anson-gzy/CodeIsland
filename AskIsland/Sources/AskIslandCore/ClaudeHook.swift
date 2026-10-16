@@ -23,7 +23,10 @@ public enum ClaudeHook {
 
         let cwd = dict["cwd"] as? String
         let sessionId = (dict["session_id"] as? String) ?? (dict["sessionId"] as? String)
-        let source = AskSource(agent: "claude", cwd: cwd, session: sessionId)
+        let transcript = (dict["transcript_path"] as? String) ?? (dict["transcriptPath"] as? String)
+        let sessionName = transcript.flatMap { SessionTitle.claude(transcriptPath: $0) }
+            ?? sessionId.flatMap { SessionTitle.claude(sessionId: $0) }
+        let source = AskSource(agent: "claude", cwd: cwd, session: sessionId, sessionName: sessionName)
 
         if eventName == "PermissionRequest" {
             let toolName = (dict["tool_name"] as? String) ?? (dict["toolName"] as? String) ?? ""

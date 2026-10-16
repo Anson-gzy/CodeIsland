@@ -89,9 +89,12 @@ public struct AskSource: Codable, Hashable, Sendable {
     /// "claude", "codex", "pi", "antigravity", "script", …
     public var agent: String?
     public var cwd: String?
+    /// Session id (opaque).
     public var session: String?
-    public init(agent: String? = nil, cwd: String? = nil, session: String? = nil) {
-        self.agent = agent; self.cwd = cwd; self.session = session
+    /// The session's human name as the agent shows it (Claude Code's session title), shown in the header.
+    public var sessionName: String?
+    public init(agent: String? = nil, cwd: String? = nil, session: String? = nil, sessionName: String? = nil) {
+        self.agent = agent; self.cwd = cwd; self.session = session; self.sessionName = sessionName
     }
 }
 

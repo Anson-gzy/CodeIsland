@@ -660,7 +660,11 @@ struct ExpandedIslandView: View {
         ScreenDetector.preferredScreen.frame.height * 0.7
     }
 
+    /// The session's own name when the agent gave one (Claude Code's session title), else the agent.
     private var agentName: String {
+        if let name = request.source?.sessionName, !name.isEmpty {
+            return name
+        }
         if let agent = request.source?.agent, !agent.isEmpty {
             return agent
         }
@@ -685,6 +689,9 @@ struct ExpandedIslandView: View {
                 Text(agentName)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .layoutPriority(1)
 
                 if let folder = lastPathComponent {
                     Text("·")
@@ -693,6 +700,7 @@ struct ExpandedIslandView: View {
                     Text(folder)
                         .font(.system(size: 15))
                         .foregroundColor(.white.opacity(0.55))
+                        .lineLimit(1)
                 }
 
                 if store.pending.count > 1 {
