@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import CodeIslandCore
 
 /// Shared bounds for the collapsed-width scale setting — keeps the settings
@@ -403,7 +404,8 @@ struct NotchPanelView: View {
                         bottomRadius: shouldShowExpanded ? 24 : 12,
                         minHeight: notchHeight
                     ),
-                    expanded: shouldShowExpanded
+                    expanded: shouldShowExpanded,
+                    notchHeight: notchHeight
                 )
             )
             .offset(y: curtainOffset)
@@ -4997,38 +4999,69 @@ private struct ClaudeLogoShape: Shape {
 // MARK: - Notch Panel Shape (inverse radius at top, regular radius at bottom)
 
 /// Island backdrop. Collapsed it stays solid black so it reads as part of the
-/// hardware notch; expanded (macOS 26+) the body turns into Liquid Glass while
-/// a black wash over the top half keeps the seam with the notch invisible.
+/// hardware notch; expanded (macOS 26+) it becomes a clear Liquid Glass lens:
+/// sharp backdrop, refraction only at the rim, black washing in from the top.
 private struct IslandBackground: View {
     let shape: NotchPanelShape
     let expanded: Bool
+    let notchHeight: CGFloat
 
     var body: some View {
         if #available(macOS 26.0, *), expanded {
-            // Like the reference: solid black down through the top half, then a
-            // long fade so only the lower part shows clear glass and its edge refraction.
-            ZStack {
-                Color.clear
-                    .glassEffect(.clear, in: shape)
-                shape.fill(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black, location: 0),
-                            .init(color: .black, location: 0.42),
-                            .init(color: .black.opacity(0.85), location: 0.55),
-                            .init(color: .black.opacity(0.55), location: 0.7),
-                            .init(color: .black.opacity(0.22), location: 0.86),
-                            .init(color: .black.opacity(0.05), location: 1),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+            ClearLensGlass(cornerRadius: shape.bottomRadius)
+                // Push the top corners above the window edge so only the bottom ones show.
+                .padding(.top, -shape.bottomRadius * 2)
+                .overlay(
+                    // Notch shoulders and a solid band under the notch, so the seam stays hidden.
+                    shape.fill(.black)
+                        .mask(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .black, location: 0),
+                                    .init(color: .black, location: 0.5),
+                                    .init(color: .clear, location: 1),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(height: notchHeight * 2)
+                            .frame(maxHeight: .infinity, alignment: .top)
+                        )
                 )
-            }
-            .transition(.opacity)
+                .transition(.opacity)
         } else {
             shape.fill(.black)
         }
+    }
+}
+
+/// NSGlassEffectView in its blur-free lens variant. The variant is private
+/// (`_variant` 11); systems without it fall back to the public clear style.
+@available(macOS 26.0, *)
+private struct ClearLensGlass: NSViewRepresentable {
+    var cornerRadius: CGFloat
+
+    func makeNSView(context: Context) -> NSGlassEffectView {
+        let glass = NSGlassEffectView()
+        glass.style = .clear
+        if glass.responds(to: Selector(("set_variant:"))) {
+            glass.setValue(11, forKey: "_variant")
+        }
+        let tint = NSView()
+        tint.wantsLayer = true
+        let gradient = CAGradientLayer()
+        // Solid black over the top half, then a long fade to clear glass at the bottom.
+        gradient.colors = [1, 1, 0.85, 0.55, 0.22, 0].map { NSColor.black.withAlphaComponent($0).cgColor }
+        gradient.locations = [0, 0.42, 0.55, 0.7, 0.86, 1]
+        gradient.startPoint = CGPoint(x: 0.5, y: 1)
+        gradient.endPoint = CGPoint(x: 0.5, y: 0)
+        tint.layer = gradient
+        glass.contentView = tint
+        return glass
+    }
+
+    func updateNSView(_ glass: NSGlassEffectView, context: Context) {
+        glass.cornerRadius = cornerRadius
     }
 }
 
