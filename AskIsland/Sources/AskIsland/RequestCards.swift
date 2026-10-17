@@ -144,7 +144,7 @@ struct QuestionCardView: View {
                 Text(request.title)
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(.white)
-                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 if let detail = request.detail, !detail.isEmpty {
                     Text(detail)
@@ -292,7 +292,7 @@ struct ActionCardView: View {
                 Text(request.title)
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(.white)
-                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .textHalo()
 
@@ -354,7 +354,7 @@ struct NotifyCardView: View {
             Text(request.title)
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundColor(.white)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .textHalo()
 
             // Detail
